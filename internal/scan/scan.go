@@ -9,6 +9,7 @@ import (
 	"github.com/noeljackson/supplychain/internal/freshness"
 	"github.com/noeljackson/supplychain/internal/ioc"
 	"github.com/noeljackson/supplychain/internal/manifest"
+	"github.com/noeljackson/supplychain/internal/npmsig"
 	"github.com/noeljackson/supplychain/internal/osv"
 	"github.com/noeljackson/supplychain/internal/registry"
 	"github.com/noeljackson/supplychain/internal/scripts"
@@ -28,6 +29,10 @@ type Options struct {
 	// registry-driven checks like maintainer-change). When nil, those checks
 	// are silently skipped.
 	Registry *registry.Client
+
+	// Signatures enables `npm audit signatures` shell-out. No-op if npm
+	// isn't on PATH or target has no package-lock.json.
+	Signatures bool
 }
 
 // Findings is the aggregated result of a scan.
@@ -42,6 +47,7 @@ type Findings struct {
 	Scripts     []scripts.Hit          `json:"script_hits"`
 	Freshness   []freshness.Hit        `json:"freshness_hits"`
 	Typosquat   []typosquat.Hit        `json:"typosquat_hits"`
+	Signatures  []npmsig.Hit           `json:"signature_hits"`
 
 	OSVAvailable bool `json:"osv_available"`
 }
@@ -49,14 +55,16 @@ type Findings struct {
 // HasHits returns true for anything that should be treated as a finding —
 // notably NOT Scripts or Freshness, which are informational (benign deps
 // often have install hooks; benign deps often publish frequently). Typosquat
-// matches DO count, since a 1–2-edit similarity to a popular name is rare.
+// and signature matches DO count: a 1–2-edit similarity to a popular name
+// is rare, and a failed registry signature is a definitive tampering signal.
 func (f Findings) HasHits() bool {
 	return len(f.Manifest) > 0 ||
 		len(f.Lockfile) > 0 ||
 		len(f.OSV) > 0 ||
 		len(f.Payloads) > 0 ||
 		len(f.Persistence) > 0 ||
-		len(f.Typosquat) > 0
+		len(f.Typosquat) > 0 ||
+		len(f.Signatures) > 0
 }
 
 // Run executes the scan.
@@ -108,6 +116,13 @@ func Run(opts Options) (Findings, error) {
 	f.Typosquat, err = typosquat.Check(opts.Target)
 	if err != nil {
 		return f, err
+	}
+
+	if opts.Signatures {
+		f.Signatures, err = npmsig.Run(opts.Target)
+		if err != nil {
+			return f, err
+		}
 	}
 
 	osvHits, osvErr := osv.Scan(opts.BinDir, opts.Target)

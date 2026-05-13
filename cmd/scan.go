@@ -38,6 +38,7 @@ func cmdScan(g *Globals, args []string) int {
 		BinDir:        g.BinDir,
 		FreshnessDays: g.FreshnessDays,
 		Registry:      registry.NewClient(filepath.Join(g.DataDir, "registry-cache")),
+		Signatures:    g.Signatures,
 	})
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "scan error:", err)

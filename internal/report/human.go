@@ -89,6 +89,13 @@ func Human(w io.Writer, f scan.Findings, opts Options) int {
 				h.Name, h.Section, h.Distance, h.Confused)
 		}
 	}
+	if len(f.Signatures) > 0 {
+		fmt.Fprintln(w)
+		fmt.Fprintln(w, "npm audit signatures — tampered or unsigned packages:")
+		for _, h := range f.Signatures {
+			fmt.Fprintf(w, "  %s@%s  %s  (%s)\n", h.Name, h.Version, h.Reason, h.Resolved)
+		}
+	}
 	renderFreshness(w, f)
 	if opts.ShowScripts && len(f.Scripts) > 0 {
 		renderScripts(w, f, false)

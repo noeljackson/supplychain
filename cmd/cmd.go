@@ -25,6 +25,10 @@ type Globals struct {
 	// --freshness (=7) or --freshness-days=N.
 	FreshnessDays int
 
+	// Signatures enables `npm audit signatures` for projects with a
+	// package-lock.json. Set via --signatures.
+	Signatures bool
+
 	// DefaultIOCs is the embedded IOC data bundled into the binary.
 	// User-writable overrides live under DataDir/iocs/.
 	DefaultIOCs embed.FS
@@ -101,6 +105,8 @@ func parseGlobalFlags(g *Globals, args []string) []string {
 			if n, err := strconv.Atoi(strings.TrimPrefix(a, "--freshness-days=")); err == nil && n > 0 {
 				g.FreshnessDays = n
 			}
+		case a == "--signatures":
+			g.Signatures = true
 		default:
 			out = append(out, a)
 		}
@@ -153,6 +159,8 @@ flags (may appear anywhere):
   --freshness           flag installed deps published in the last 7 days
                         (queries npm registry; results cached 24h per package)
   --freshness-days=N    custom freshness window (implies --freshness)
+  --signatures          run 'npm audit signatures' for projects with
+                        a package-lock.json (requires npm on PATH)
 
 environment:
   SUPPLYCHAIN_IOC_URL   base URL for IOC data updates

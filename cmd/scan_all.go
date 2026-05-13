@@ -49,6 +49,7 @@ func cmdScanAll(g *Globals, args []string) int {
 			BinDir:        g.BinDir,
 			FreshnessDays: g.FreshnessDays,
 			Registry:      registry.NewClient(filepath.Join(g.DataDir, "registry-cache")),
+			Signatures:    g.Signatures,
 		})
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "warn:", repo+":", err)
