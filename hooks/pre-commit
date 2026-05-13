@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# Pre-commit hook. Runs supplychain scan when a manifest or lockfile is staged.
+set -euo pipefail
+
+CHANGED="$(git diff --cached --name-only --diff-filter=ACMR \
+  | grep -E '(^|/)(package-lock\.json|pnpm-lock\.yaml|yarn\.lock|bun\.lock|package\.json)$' || true)"
+
+[ -z "$CHANGED" ] && exit 0
+
+if ! command -v supplychain >/dev/null 2>&1; then
+  echo "supplychain not on PATH; skipping pre-commit scan." >&2
+  exit 0
+fi
+
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+if ! supplychain scan "$REPO_ROOT"; then
+  echo
+  echo "commit blocked: supply-chain findings in changed manifest/lockfile(s)." >&2
+  echo "bypass with: git commit --no-verify" >&2
+  exit 1
+fi

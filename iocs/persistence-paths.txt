@@ -1,0 +1,10 @@
+# Persistence artifacts dropped by known supply-chain malware.
+# One path per line; ~ and $HOME are expanded.
+
+# Shai-Hulud / Mini Shai-Hulud (2026, npm)
+~/Library/LaunchAgents/com.user.gh-token-monitor.plist
+~/.config/systemd/user/gh-token-monitor.service
+~/.local/bin/gh-token-monitor.sh
+~/.config/gh-token-monitor/token
+~/.claude/router_runtime.js
+~/.claude/setup.mjs

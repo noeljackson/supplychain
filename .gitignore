@@ -1,0 +1,26 @@
+# Built artifacts
+/supplychain
+/supplychain.exe
+/dist/
+*.tmp
+
+# Go test/coverage output
+*.test
+*.out
+coverage.*
+
+# Go workspace files (local-only)
+go.work
+go.work.sum
+
+# Runtime state — these only exist under $XDG_DATA_HOME at runtime, but
+# guard against accidental check-in if a user runs the tool from the repo.
+.ioc_last_update
+
+# Editor / OS cruft
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store

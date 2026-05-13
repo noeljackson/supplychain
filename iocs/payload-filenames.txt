@@ -1,0 +1,7 @@
+# Filenames known to be dropped inside compromised npm packages.
+# Scanned for under each scan target (including node_modules).
+
+# Shai-Hulud / Mini Shai-Hulud (2026, npm)
+router_init.js
+tanstack_runner.js
+opensearch_init.js
