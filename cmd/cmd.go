@@ -7,6 +7,8 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 )
 
 const Version = "0.1.0"
@@ -18,6 +20,10 @@ type Globals struct {
 	NoUpdate    bool
 	Scripts     bool // --scripts: include install-script section in human output
 	ScriptsOnly bool // --scripts-only: ONLY show install-script section
+
+	// FreshnessDays > 0 enables the freshness check with that window. Set via
+	// --freshness (=7) or --freshness-days=N.
+	FreshnessDays int
 
 	// DefaultIOCs is the embedded IOC data bundled into the binary.
 	// User-writable overrides live under DataDir/iocs/.
@@ -77,18 +83,24 @@ func Run(defaultIOCs embed.FS) int {
 func parseGlobalFlags(g *Globals, args []string) []string {
 	out := make([]string, 0, len(args))
 	for _, a := range args {
-		switch a {
-		case "--json":
+		switch {
+		case a == "--json":
 			g.JSON = true
-		case "--quiet", "-q":
+		case a == "--quiet" || a == "-q":
 			g.Quiet = true
-		case "--no-update":
+		case a == "--no-update":
 			g.NoUpdate = true
-		case "--scripts":
+		case a == "--scripts":
 			g.Scripts = true
-		case "--scripts-only":
+		case a == "--scripts-only":
 			g.ScriptsOnly = true
 			g.Scripts = true
+		case a == "--freshness":
+			g.FreshnessDays = 7
+		case strings.HasPrefix(a, "--freshness-days="):
+			if n, err := strconv.Atoi(strings.TrimPrefix(a, "--freshness-days=")); err == nil && n > 0 {
+				g.FreshnessDays = n
+			}
 		default:
 			out = append(out, a)
 		}
@@ -138,6 +150,9 @@ flags (may appear anywhere):
   --no-update           skip auto-update for this run
   --scripts             include install/preinstall/postinstall script section
   --scripts-only        show only the install-script section (for audits)
+  --freshness           flag installed deps published in the last 7 days
+                        (queries npm registry; results cached 24h per package)
+  --freshness-days=N    custom freshness window (implies --freshness)
 
 environment:
   SUPPLYCHAIN_IOC_URL   base URL for IOC data updates

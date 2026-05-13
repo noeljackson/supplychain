@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/noeljackson/supplychain/internal/registry"
 	"github.com/noeljackson/supplychain/internal/report"
 	"github.com/noeljackson/supplychain/internal/scan"
 	"github.com/noeljackson/supplychain/internal/update"
@@ -43,9 +44,11 @@ func cmdScanAll(g *Globals, args []string) int {
 			fmt.Println("==>", repo)
 		}
 		findings, err := scan.Run(scan.Options{
-			Target:  repo,
-			OpenIOC: g.OpenIOC,
-			BinDir:  g.BinDir,
+			Target:        repo,
+			OpenIOC:       g.OpenIOC,
+			BinDir:        g.BinDir,
+			FreshnessDays: g.FreshnessDays,
+			Registry:      registry.NewClient(filepath.Join(g.DataDir, "registry-cache")),
 		})
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "warn:", repo+":", err)

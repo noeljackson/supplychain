@@ -30,6 +30,7 @@ func Human(w io.Writer, f scan.Findings, opts Options) int {
 			if !f.OSVAvailable {
 				fmt.Fprintln(w, "    note: osv-scanner not installed — OSV advisory check skipped. Run 'supplychain update' to install.")
 			}
+			renderFreshness(w, f)
 			if len(f.Scripts) > 0 {
 				if opts.ShowScripts {
 					renderScripts(w, f, false)
@@ -80,12 +81,25 @@ func Human(w io.Writer, f scan.Findings, opts Options) int {
 			fmt.Fprintf(w, "  %s\n", p)
 		}
 	}
+	renderFreshness(w, f)
 	if opts.ShowScripts && len(f.Scripts) > 0 {
 		renderScripts(w, f, false)
 	} else if len(f.Scripts) > 0 {
 		fmt.Fprintf(w, "\nnote: %d installed deps declare install/postinstall scripts. Run with --scripts to list.\n", len(f.Scripts))
 	}
 	return 1
+}
+
+func renderFreshness(w io.Writer, f scan.Findings) {
+	if len(f.Freshness) == 0 {
+		return
+	}
+	fmt.Fprintln(w)
+	fmt.Fprintf(w, "Recently-published deps (informational, %d):\n", len(f.Freshness))
+	for _, h := range f.Freshness {
+		fmt.Fprintf(w, "  %s@%s  published %s ago (%s)\n",
+			h.Name, h.Version, h.AgeHuman, h.Published.Format("2006-01-02"))
+	}
 }
 
 func renderScripts(w io.Writer, f scan.Findings, headerless bool) {

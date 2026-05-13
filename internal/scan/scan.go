@@ -6,9 +6,11 @@ import (
 	"errors"
 	"io/fs"
 
+	"github.com/noeljackson/supplychain/internal/freshness"
 	"github.com/noeljackson/supplychain/internal/ioc"
 	"github.com/noeljackson/supplychain/internal/manifest"
 	"github.com/noeljackson/supplychain/internal/osv"
+	"github.com/noeljackson/supplychain/internal/registry"
 	"github.com/noeljackson/supplychain/internal/scripts"
 )
 
@@ -17,6 +19,14 @@ type Options struct {
 	Target  string
 	BinDir  string
 	OpenIOC func(name string) (fs.File, error)
+
+	// FreshnessDays > 0 enables the registry-backed freshness check; 0 disables.
+	FreshnessDays int
+
+	// Registry is the npm registry client used by freshness (and future
+	// registry-driven checks like maintainer-change). When nil, those checks
+	// are silently skipped.
+	Registry *registry.Client
 }
 
 // Findings is the aggregated result of a scan.
@@ -29,6 +39,7 @@ type Findings struct {
 	Payloads    []ioc.PayloadHit       `json:"payload_hits"`
 	Persistence []string               `json:"persistence_hits"`
 	Scripts     []scripts.Hit          `json:"script_hits"`
+	Freshness   []freshness.Hit        `json:"freshness_hits"`
 
 	OSVAvailable bool `json:"osv_available"`
 }
@@ -81,6 +92,13 @@ func Run(opts Options) (Findings, error) {
 	f.Scripts, err = scripts.ScanInstalled(opts.Target)
 	if err != nil {
 		return f, err
+	}
+
+	if opts.FreshnessDays > 0 && opts.Registry != nil {
+		f.Freshness, err = freshness.Check(opts.Target, opts.FreshnessDays, opts.Registry)
+		if err != nil {
+			return f, err
+		}
 	}
 
 	osvHits, osvErr := osv.Scan(opts.BinDir, opts.Target)
