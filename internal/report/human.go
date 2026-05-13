@@ -81,6 +81,14 @@ func Human(w io.Writer, f scan.Findings, opts Options) int {
 			fmt.Fprintf(w, "  %s\n", p)
 		}
 	}
+	if len(f.Typosquat) > 0 {
+		fmt.Fprintln(w)
+		fmt.Fprintln(w, "Possible typosquats (similar to popular package names):")
+		for _, h := range f.Typosquat {
+			fmt.Fprintf(w, "  %s (declared in %s)  — %d edit(s) from %q\n",
+				h.Name, h.Section, h.Distance, h.Confused)
+		}
+	}
 	renderFreshness(w, f)
 	if opts.ShowScripts && len(f.Scripts) > 0 {
 		renderScripts(w, f, false)

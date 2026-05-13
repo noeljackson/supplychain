@@ -1,0 +1,229 @@
+# Top npm package names by ecosystem prominence. Used as the reference set
+# for typosquat detection (Levenshtein distance). Add to this list as new
+# high-value targets emerge; remove if a name turns out to generate false
+# positives in practice. Comments (#) and blank lines are ignored.
+
+# --- frameworks & meta-frameworks ---
+react
+react-dom
+react-native
+vue
+angular
+@angular/core
+svelte
+solid-js
+next
+nuxt
+gatsby
+remix
+astro
+qwik
+
+# --- backend frameworks ---
+express
+fastify
+koa
+hapi
+@nestjs/core
+@nestjs/common
+
+# --- bundlers / build tools ---
+webpack
+rollup
+vite
+esbuild
+parcel
+turbo
+nx
+lerna
+
+# --- common runtime libs ---
+lodash
+underscore
+ramda
+async
+rxjs
+immer
+immutable
+date-fns
+dayjs
+luxon
+moment
+
+# --- HTTP / network ---
+axios
+node-fetch
+got
+undici
+ky
+ws
+socket.io
+graphql
+apollo-server
+@apollo/client
+trpc
+@trpc/server
+@trpc/client
+
+# --- CLI / process ---
+chalk
+picocolors
+kleur
+ansis
+debug
+commander
+yargs
+minimist
+inquirer
+prompts
+nodemon
+concurrently
+cross-env
+pm2
+
+# --- filesystem ---
+fs-extra
+graceful-fs
+mkdirp
+rimraf
+chokidar
+glob
+fast-glob
+minimatch
+micromatch
+picomatch
+
+# --- validation / config ---
+zod
+yup
+joi
+ajv
+semver
+dotenv
+js-yaml
+toml
+json5
+xml2js
+papaparse
+csv-parse
+
+# --- ids / crypto ---
+uuid
+nanoid
+ulid
+bcrypt
+bcryptjs
+jsonwebtoken
+crypto-js
+
+# --- frontend utilities ---
+prop-types
+classnames
+clsx
+
+# --- testing ---
+jest
+mocha
+chai
+vitest
+cypress
+playwright
+puppeteer
+ava
+jasmine
+sinon
+supertest
+
+# --- type checking & lint ---
+typescript
+ts-node
+tsx
+prettier
+eslint
+@types/node
+@types/react
+@types/jest
+@types/express
+
+# --- babel ---
+@babel/core
+@babel/parser
+@babel/traverse
+@babel/types
+@babel/preset-env
+
+# --- CSS / styling ---
+postcss
+sass
+less
+tailwindcss
+autoprefixer
+styled-components
+@emotion/react
+@emotion/styled
+
+# --- UI libraries ---
+@mui/material
+antd
+@chakra-ui/react
+react-router
+react-router-dom
+
+# --- state management ---
+redux
+react-redux
+@reduxjs/toolkit
+recoil
+zustand
+jotai
+
+# --- forms ---
+formik
+react-hook-form
+
+# --- query / data ---
+@tanstack/react-query
+@tanstack/react-router
+@tanstack/router-core
+@tanstack/router-utils
+
+# --- ORM / db ---
+mongoose
+mongodb
+pg
+mysql2
+sqlite3
+redis
+ioredis
+prisma
+@prisma/client
+sequelize
+typeorm
+drizzle-orm
+
+# --- express ecosystem ---
+body-parser
+cookie-parser
+cors
+helmet
+morgan
+multer
+passport
+nodemailer
+
+# --- logging ---
+winston
+pino
+bunyan
+
+# --- images / media ---
+sharp
+jimp
+canvas
+
+# --- dev tooling ---
+husky
+lint-staged
+
+# --- jquery / legacy ---
+jquery

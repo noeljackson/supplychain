@@ -12,6 +12,7 @@ import (
 	"github.com/noeljackson/supplychain/internal/osv"
 	"github.com/noeljackson/supplychain/internal/registry"
 	"github.com/noeljackson/supplychain/internal/scripts"
+	"github.com/noeljackson/supplychain/internal/typosquat"
 )
 
 // Options configures a scan.
@@ -40,19 +41,22 @@ type Findings struct {
 	Persistence []string               `json:"persistence_hits"`
 	Scripts     []scripts.Hit          `json:"script_hits"`
 	Freshness   []freshness.Hit        `json:"freshness_hits"`
+	Typosquat   []typosquat.Hit        `json:"typosquat_hits"`
 
 	OSVAvailable bool `json:"osv_available"`
 }
 
 // HasHits returns true for anything that should be treated as a finding —
-// notably NOT Scripts, which are informational (most packages with install
-// hooks are benign; surfacing them is for human review, not blocking).
+// notably NOT Scripts or Freshness, which are informational (benign deps
+// often have install hooks; benign deps often publish frequently). Typosquat
+// matches DO count, since a 1–2-edit similarity to a popular name is rare.
 func (f Findings) HasHits() bool {
 	return len(f.Manifest) > 0 ||
 		len(f.Lockfile) > 0 ||
 		len(f.OSV) > 0 ||
 		len(f.Payloads) > 0 ||
-		len(f.Persistence) > 0
+		len(f.Persistence) > 0 ||
+		len(f.Typosquat) > 0
 }
 
 // Run executes the scan.
@@ -99,6 +103,11 @@ func Run(opts Options) (Findings, error) {
 		if err != nil {
 			return f, err
 		}
+	}
+
+	f.Typosquat, err = typosquat.Check(opts.Target)
+	if err != nil {
+		return f, err
 	}
 
 	osvHits, osvErr := osv.Scan(opts.BinDir, opts.Target)
