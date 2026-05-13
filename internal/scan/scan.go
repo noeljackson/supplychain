@@ -42,6 +42,9 @@ type Options struct {
 	// MaintainerBaseDir is where per-package maintainer baselines live
 	// (typically $DataDir/maintainers).
 	MaintainerBaseDir string
+
+	// TyposquatDistance overrides typosquat.DefaultMaxDistance when > 0.
+	TyposquatDistance int
 }
 
 // Findings is the aggregated result of a scan.
@@ -123,7 +126,11 @@ func Run(opts Options) (Findings, error) {
 		}
 	}
 
-	f.Typosquat, err = typosquat.Check(opts.Target)
+	if opts.TyposquatDistance > 0 {
+		f.Typosquat, err = typosquat.CheckWith(opts.Target, opts.TyposquatDistance)
+	} else {
+		f.Typosquat, err = typosquat.Check(opts.Target)
+	}
 	if err != nil {
 		return f, err
 	}

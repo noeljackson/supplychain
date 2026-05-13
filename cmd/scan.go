@@ -41,6 +41,7 @@ func cmdScan(g *Globals, args []string) int {
 		Signatures:        g.Signatures,
 		Maintainers:       g.Maintainers,
 		MaintainerBaseDir: filepath.Join(g.DataDir, "maintainers"),
+		TyposquatDistance: g.TyposquatDistance,
 	})
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "scan error:", err)

@@ -15,12 +15,13 @@ import (
 //go:embed popular-npm-names.txt
 var popularRaw string
 
-// MaxDistance is the largest Levenshtein distance we treat as a typosquat.
-// 1 catches the most blatant typos; 2 catches double-typos but raises false
-// positives. We use 2 by default but require deps to be at least 4 chars
-// long (short names match too much) and skip the dep if it's also in the
-// popular set.
-const MaxDistance = 2
+// DefaultMaxDistance is the Levenshtein threshold used when the caller doesn't
+// override it. We default to 1: that's the regime where typosquats are
+// unambiguous (`loadash` vs `lodash`, `expresss` vs `express`). Distance 2
+// pulls in too many legitimate packages that happen to be lexically close
+// to a popular name (`vercel` vs `parcel`, `jose` vs `joi`, `jiti` vs `vite`),
+// so callers must opt into it explicitly.
+const DefaultMaxDistance = 1
 
 // Hit is a single dependency name flagged as similar to a popular package.
 type Hit struct {
@@ -56,9 +57,18 @@ var popularSet = func() map[string]struct{} {
 }()
 
 // Check walks package.json files under target and returns suspected
-// typosquats. Skips node_modules (we only check what the developer declared,
-// not what got pulled in transitively — false-positive rate is lower this way).
+// typosquats using the default distance threshold. Convenience wrapper.
 func Check(target string) ([]Hit, error) {
+	return CheckWith(target, DefaultMaxDistance)
+}
+
+// CheckWith is Check with a caller-specified max edit distance. Distance 1
+// catches unambiguous single-typo squats; distance 2 raises false-positive
+// rates significantly (see DefaultMaxDistance comment).
+func CheckWith(target string, maxDistance int) ([]Hit, error) {
+	if maxDistance < 1 {
+		maxDistance = DefaultMaxDistance
+	}
 	var hits []Hit
 	err := filepath.WalkDir(target, func(path string, d fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
@@ -74,7 +84,7 @@ func Check(target string) ([]Hit, error) {
 		if d.Name() != "package.json" {
 			return nil
 		}
-		fileHits, err := scanFile(path)
+		fileHits, err := scanFile(path, maxDistance)
 		if err != nil {
 			return nil
 		}
@@ -84,7 +94,7 @@ func Check(target string) ([]Hit, error) {
 	return hits, err
 }
 
-func scanFile(path string) ([]Hit, error) {
+func scanFile(path string, maxDistance int) ([]Hit, error) {
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
@@ -115,7 +125,7 @@ func scanFile(path string) ([]Hit, error) {
 				continue
 			}
 			seen[name] = struct{}{}
-			if h, ok := classify(name); ok {
+			if h, ok := classifyAt(name, maxDistance); ok {
 				h.Source = path
 				h.Section = sect.name
 				hits = append(hits, h)
@@ -125,27 +135,31 @@ func scanFile(path string) ([]Hit, error) {
 	return hits, nil
 }
 
+// classify uses the default distance. Kept as a wrapper because tests call it.
 func classify(name string) (Hit, bool) {
+	return classifyAt(name, DefaultMaxDistance)
+}
+
+func classifyAt(name string, maxDistance int) (Hit, bool) {
 	if len(name) < 4 {
 		return Hit{}, false
 	}
 	if _, popular := popularSet[name]; popular {
 		return Hit{}, false
 	}
-	best := Hit{Name: name, Distance: MaxDistance + 1}
+	best := Hit{Name: name, Distance: maxDistance + 1}
 	for _, p := range popular {
-		// Length filter: distance >= |len-diff|, so prune fast.
-		if abs(len(p)-len(name)) > MaxDistance {
+		if abs(len(p)-len(name)) > maxDistance {
 			continue
 		}
 		d := levenshtein(name, p)
-		if d == 0 || d > MaxDistance {
+		if d == 0 || d > maxDistance {
 			continue
 		}
 		if d < best.Distance {
 			best = Hit{Name: name, Confused: p, Distance: d}
 			if d == 1 {
-				break // can't do better than distance 1
+				break
 			}
 		}
 	}

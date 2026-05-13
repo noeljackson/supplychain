@@ -30,6 +30,7 @@ func TestLevenshtein(t *testing.T) {
 }
 
 func TestClassify(t *testing.T) {
+	// classify() uses DefaultMaxDistance = 1.
 	cases := []struct {
 		name      string
 		wantHit   bool
@@ -44,6 +45,10 @@ func TestClassify(t *testing.T) {
 		{"react", false, "", 0},
 		{"lodash", false, "", 0},
 		{"chalk", false, "", 0},
+		// real-world distance-2 false positives — should NOT trigger at d=1
+		{"vercel", false, "", 0},  // 2 edits from parcel
+		{"jose", false, "", 0},    // 2 edits from joi (also too short to even consider)
+		{"jiti", false, "", 0},    // 2 edits from vite (also too short)
 		// too-far names
 		{"completely-different-name", false, "", 0},
 		{"some-niche-utility", false, "", 0},

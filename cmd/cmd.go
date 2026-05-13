@@ -33,6 +33,11 @@ type Globals struct {
 	// First run establishes a baseline silently.
 	Maintainers bool
 
+	// TyposquatDistance overrides the default Levenshtein threshold (1).
+	// Distance 2 catches double-typos but pulls in false positives like
+	// vercel/parcel, jose/joi. Set via --typosquat-distance=N.
+	TyposquatDistance int
+
 	// DefaultIOCs is the embedded IOC data bundled into the binary.
 	// User-writable overrides live under DataDir/iocs/.
 	DefaultIOCs embed.FS
@@ -113,6 +118,10 @@ func parseGlobalFlags(g *Globals, args []string) []string {
 			g.Signatures = true
 		case a == "--maintainers":
 			g.Maintainers = true
+		case strings.HasPrefix(a, "--typosquat-distance="):
+			if n, err := strconv.Atoi(strings.TrimPrefix(a, "--typosquat-distance=")); err == nil && n > 0 {
+				g.TyposquatDistance = n
+			}
 		default:
 			out = append(out, a)
 		}
@@ -178,6 +187,8 @@ flags (may appear anywhere):
                         establishes a baseline silently; subsequent runs
                         flag deltas (queries npm registry; baseline persists
                         under DataDir/maintainers/)
+  --typosquat-distance=N  override the typosquat edit-distance threshold
+                          (default 1 — unambiguous single-typo squats only)
 
 environment:
   SUPPLYCHAIN_DATA_DIR  where mutable state lives (default: $XDG_DATA_HOME/supplychain,
