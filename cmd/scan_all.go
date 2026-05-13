@@ -54,7 +54,11 @@ func cmdScanAll(g *Globals, args []string) int {
 		if g.JSON {
 			_ = report.JSON(os.Stdout, findings)
 		} else {
-			_ = report.Human(os.Stdout, findings, g.Quiet)
+			_ = report.Human(os.Stdout, findings, report.Options{
+				Quiet:       g.Quiet,
+				ShowScripts: g.Scripts,
+				ScriptsOnly: g.ScriptsOnly,
+			})
 		}
 		if findings.HasHits() {
 			anyHits = true

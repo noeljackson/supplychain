@@ -44,5 +44,9 @@ func cmdScan(g *Globals, args []string) int {
 	if g.JSON {
 		return report.JSON(os.Stdout, findings)
 	}
-	return report.Human(os.Stdout, findings, g.Quiet)
+	return report.Human(os.Stdout, findings, report.Options{
+		Quiet:       g.Quiet,
+		ShowScripts: g.Scripts,
+		ScriptsOnly: g.ScriptsOnly,
+	})
 }

@@ -13,9 +13,11 @@ const Version = "0.1.0"
 
 // Globals holds the parsed global flags + dependencies passed down to commands.
 type Globals struct {
-	JSON     bool
-	Quiet    bool
-	NoUpdate bool
+	JSON        bool
+	Quiet       bool
+	NoUpdate    bool
+	Scripts     bool // --scripts: include install-script section in human output
+	ScriptsOnly bool // --scripts-only: ONLY show install-script section
 
 	// DefaultIOCs is the embedded IOC data bundled into the binary.
 	// User-writable overrides live under DataDir/iocs/.
@@ -82,6 +84,11 @@ func parseGlobalFlags(g *Globals, args []string) []string {
 			g.Quiet = true
 		case "--no-update":
 			g.NoUpdate = true
+		case "--scripts":
+			g.Scripts = true
+		case "--scripts-only":
+			g.ScriptsOnly = true
+			g.Scripts = true
 		default:
 			out = append(out, a)
 		}
@@ -129,6 +136,8 @@ flags (may appear anywhere):
   --json                machine-readable output
   --quiet, -q           silent if clean (useful in hooks)
   --no-update           skip auto-update for this run
+  --scripts             include install/preinstall/postinstall script section
+  --scripts-only        show only the install-script section (for audits)
 
 environment:
   SUPPLYCHAIN_IOC_URL   base URL for IOC data updates

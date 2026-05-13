@@ -9,13 +9,33 @@ import (
 	"github.com/noeljackson/supplychain/internal/scan"
 )
 
+// Options controls human-output rendering.
+type Options struct {
+	Quiet       bool
+	ShowScripts bool // include the install-script section
+	ScriptsOnly bool // suppress everything except the install-script section
+}
+
 // Human writes a human-readable report. Returns 1 if there are hits, 0 if clean.
-func Human(w io.Writer, f scan.Findings, quiet bool) int {
+// "Hits" excludes install-script findings (informational only).
+func Human(w io.Writer, f scan.Findings, opts Options) int {
+	if opts.ScriptsOnly {
+		renderScripts(w, f, true)
+		return 0
+	}
+
 	if !f.HasHits() {
-		if !quiet {
+		if !opts.Quiet {
 			fmt.Fprintf(w, "ok  clean: %s\n", f.Target)
 			if !f.OSVAvailable {
 				fmt.Fprintln(w, "    note: osv-scanner not installed — OSV advisory check skipped. Run 'supplychain update' to install.")
+			}
+			if len(f.Scripts) > 0 {
+				if opts.ShowScripts {
+					renderScripts(w, f, false)
+				} else {
+					fmt.Fprintf(w, "    note: %d installed deps declare install/postinstall scripts. Run with --scripts to list, --scripts-only to audit them in isolation.\n", len(f.Scripts))
+				}
 			}
 		}
 		return 0
@@ -60,5 +80,26 @@ func Human(w io.Writer, f scan.Findings, quiet bool) int {
 			fmt.Fprintf(w, "  %s\n", p)
 		}
 	}
+	if opts.ShowScripts && len(f.Scripts) > 0 {
+		renderScripts(w, f, false)
+	} else if len(f.Scripts) > 0 {
+		fmt.Fprintf(w, "\nnote: %d installed deps declare install/postinstall scripts. Run with --scripts to list.\n", len(f.Scripts))
+	}
 	return 1
+}
+
+func renderScripts(w io.Writer, f scan.Findings, headerless bool) {
+	if !headerless {
+		fmt.Fprintln(w)
+	}
+	fmt.Fprintf(w, "Install-script declarations (%d deps, informational):\n", len(f.Scripts))
+	for _, h := range f.Scripts {
+		for hook, body := range h.Hooks {
+			one := strings.ReplaceAll(body, "\n", " ⏎ ")
+			if len(one) > 160 {
+				one = one[:157] + "..."
+			}
+			fmt.Fprintf(w, "  %s@%s  %s: %s\n", h.Name, h.Version, hook, one)
+		}
+	}
 }

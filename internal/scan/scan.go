@@ -9,6 +9,7 @@ import (
 	"github.com/noeljackson/supplychain/internal/ioc"
 	"github.com/noeljackson/supplychain/internal/manifest"
 	"github.com/noeljackson/supplychain/internal/osv"
+	"github.com/noeljackson/supplychain/internal/scripts"
 )
 
 // Options configures a scan.
@@ -27,10 +28,14 @@ type Findings struct {
 	OSV         []osv.PackageVuln      `json:"osv_hits"`
 	Payloads    []ioc.PayloadHit       `json:"payload_hits"`
 	Persistence []string               `json:"persistence_hits"`
+	Scripts     []scripts.Hit          `json:"script_hits"`
 
 	OSVAvailable bool `json:"osv_available"`
 }
 
+// HasHits returns true for anything that should be treated as a finding —
+// notably NOT Scripts, which are informational (most packages with install
+// hooks are benign; surfacing them is for human review, not blocking).
 func (f Findings) HasHits() bool {
 	return len(f.Manifest) > 0 ||
 		len(f.Lockfile) > 0 ||
@@ -72,6 +77,11 @@ func Run(opts Options) (Findings, error) {
 		return f, err
 	}
 	f.Persistence = ioc.CheckPersistence(persistList)
+
+	f.Scripts, err = scripts.ScanInstalled(opts.Target)
+	if err != nil {
+		return f, err
+	}
 
 	osvHits, osvErr := osv.Scan(opts.BinDir, opts.Target)
 	if osvErr == nil {
