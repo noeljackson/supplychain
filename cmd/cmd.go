@@ -122,22 +122,29 @@ func parseGlobalFlags(g *Globals, args []string) []string {
 
 func initPaths(g *Globals) error {
 	if g.DataDir == "" {
-		base := os.Getenv("XDG_DATA_HOME")
-		if base == "" {
+		switch {
+		case os.Getenv("SUPPLYCHAIN_DATA_DIR") != "":
+			g.DataDir = os.Getenv("SUPPLYCHAIN_DATA_DIR")
+		case os.Getenv("XDG_DATA_HOME") != "":
+			g.DataDir = filepath.Join(os.Getenv("XDG_DATA_HOME"), "supplychain")
+		default:
 			home, err := os.UserHomeDir()
 			if err != nil {
 				return err
 			}
-			base = filepath.Join(home, ".local", "share")
+			g.DataDir = filepath.Join(home, ".local", "share", "supplychain")
 		}
-		g.DataDir = filepath.Join(base, "supplychain")
 	}
 	if g.BinDir == "" {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return err
+		if v := os.Getenv("SUPPLYCHAIN_BIN_DIR"); v != "" {
+			g.BinDir = v
+		} else {
+			home, err := os.UserHomeDir()
+			if err != nil {
+				return err
+			}
+			g.BinDir = filepath.Join(home, ".local", "bin")
 		}
-		g.BinDir = filepath.Join(home, ".local", "bin")
 	}
 	return os.MkdirAll(g.DataDir, 0o755)
 }
@@ -173,6 +180,10 @@ flags (may appear anywhere):
                         under DataDir/maintainers/)
 
 environment:
+  SUPPLYCHAIN_DATA_DIR  where mutable state lives (default: $XDG_DATA_HOME/supplychain,
+                        else ~/.local/share/supplychain)
+  SUPPLYCHAIN_BIN_DIR   where bootstrapped binaries (osv-scanner) install
+                        (default: ~/.local/bin)
   SUPPLYCHAIN_IOC_URL   base URL for IOC data updates
                         (default: https://raw.githubusercontent.com/noeljackson/supplychain/main/iocs)
   SUPPLYCHAIN_PIN       git ref / tag to pin IOC data to (default: main)
