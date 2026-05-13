@@ -149,14 +149,14 @@ func Run(opts Options) (Findings, error) {
 		}
 	}
 
-	osvHits, osvErr := osv.Scan(opts.BinDir, opts.Target)
-	if osvErr == nil {
-		// osv.Scan returns nil findings when osv-scanner isn't installed.
-		// If we got here without error, treat it as available iff we got data.
-		if osvHits != nil {
+	// Availability is independent of whether the scan returned findings —
+	// a clean OSV scan also returns no hits but is "available".
+	f.OSVAvailable = isAvailable(opts.BinDir)
+	if f.OSVAvailable {
+		osvHits, osvErr := osv.Scan(opts.BinDir, opts.Target)
+		if osvErr == nil && osvHits != nil {
 			f.OSV = osvHits
 		}
-		f.OSVAvailable = osvHits != nil || isAvailable(opts.BinDir)
 	}
 	return f, nil
 }
