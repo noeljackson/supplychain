@@ -1,0 +1,57 @@
+name: ioc-refresh
+
+# Periodically scrape public threat-intel sources for newly-disclosed npm
+# package@version IOCs and open a PR adding them to iocs/packages.txt.
+#
+# This is intentionally human-in-the-loop: the workflow only opens PRs, it
+# never auto-merges. Review the diff + source link before merging.
+
+on:
+  schedule:
+    - cron: '17 6 * * *'  # 06:17 UTC daily — off-peak for both PR-review and source rate-limits
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run scrapers
+        id: scrape
+        run: |
+          mkdir -p /tmp/ioc-scrape
+          python3 scripts/scrape_iocs.py \
+            --packages iocs/packages.txt \
+            --persistence iocs/persistence-paths.txt \
+            --payloads iocs/payload-filenames.txt \
+            --report /tmp/ioc-scrape/report.md \
+          || { echo "scrapers reported no new entries"; exit 0; }
+
+      - name: Check for diff
+        id: diff
+        run: |
+          if git diff --quiet iocs/; then
+            echo "no-changes"
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "iocs/ changed"
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Open PR
+        if: steps.diff.outputs.changed == 'true'
+        uses: peter-evans/create-pull-request@v6
+        with:
+          branch: ioc-refresh/auto
+          title: "ioc-refresh: new entries from scheduled scrape"
+          commit-message: "ioc-refresh: pull new IOC entries"
+          body-path: /tmp/ioc-scrape/report.md
+          labels: ioc-refresh
+          add-paths: |
+            iocs/*.txt
+          delete-branch: true
