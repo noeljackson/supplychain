@@ -44,12 +44,14 @@ func cmdScanAll(g *Globals, args []string) int {
 			fmt.Println("==>", repo)
 		}
 		findings, err := scan.Run(scan.Options{
-			Target:        repo,
-			OpenIOC:       g.OpenIOC,
-			BinDir:        g.BinDir,
-			FreshnessDays: g.FreshnessDays,
-			Registry:      registry.NewClient(filepath.Join(g.DataDir, "registry-cache")),
-			Signatures:    g.Signatures,
+			Target:            repo,
+			OpenIOC:           g.OpenIOC,
+			BinDir:            g.BinDir,
+			FreshnessDays:     g.FreshnessDays,
+			Registry:          registry.NewClient(filepath.Join(g.DataDir, "registry-cache")),
+			Signatures:        g.Signatures,
+			Maintainers:       g.Maintainers,
+			MaintainerBaseDir: filepath.Join(g.DataDir, "maintainers"),
 		})
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "warn:", repo+":", err)

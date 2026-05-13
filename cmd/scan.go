@@ -33,12 +33,14 @@ func cmdScan(g *Globals, args []string) int {
 	}
 
 	findings, err := scan.Run(scan.Options{
-		Target:        abs,
-		OpenIOC:       g.OpenIOC,
-		BinDir:        g.BinDir,
-		FreshnessDays: g.FreshnessDays,
-		Registry:      registry.NewClient(filepath.Join(g.DataDir, "registry-cache")),
-		Signatures:    g.Signatures,
+		Target:            abs,
+		OpenIOC:           g.OpenIOC,
+		BinDir:            g.BinDir,
+		FreshnessDays:     g.FreshnessDays,
+		Registry:          registry.NewClient(filepath.Join(g.DataDir, "registry-cache")),
+		Signatures:        g.Signatures,
+		Maintainers:       g.Maintainers,
+		MaintainerBaseDir: filepath.Join(g.DataDir, "maintainers"),
 	})
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "scan error:", err)

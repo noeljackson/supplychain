@@ -29,6 +29,10 @@ type Globals struct {
 	// package-lock.json. Set via --signatures.
 	Signatures bool
 
+	// Maintainers enables the maintainer-change check. Set via --maintainers.
+	// First run establishes a baseline silently.
+	Maintainers bool
+
 	// DefaultIOCs is the embedded IOC data bundled into the binary.
 	// User-writable overrides live under DataDir/iocs/.
 	DefaultIOCs embed.FS
@@ -107,6 +111,8 @@ func parseGlobalFlags(g *Globals, args []string) []string {
 			}
 		case a == "--signatures":
 			g.Signatures = true
+		case a == "--maintainers":
+			g.Maintainers = true
 		default:
 			out = append(out, a)
 		}
@@ -161,6 +167,10 @@ flags (may appear anywhere):
   --freshness-days=N    custom freshness window (implies --freshness)
   --signatures          run 'npm audit signatures' for projects with
                         a package-lock.json (requires npm on PATH)
+  --maintainers         track maintainer-set changes per package. First run
+                        establishes a baseline silently; subsequent runs
+                        flag deltas (queries npm registry; baseline persists
+                        under DataDir/maintainers/)
 
 environment:
   SUPPLYCHAIN_IOC_URL   base URL for IOC data updates
