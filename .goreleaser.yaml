@@ -1,0 +1,64 @@
+version: 2
+
+project_name: supplychain
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: supplychain
+    main: ./
+    binary: supplychain
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w
+      - -X "github.com/noeljackson/supplychain/cmd.Version={{ .Tag }}"
+    goos: [linux, darwin]
+    goarch: [amd64, arm64]
+
+archives:
+  - id: supplychain
+    formats: [tar.gz]
+    name_template: '{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}'
+    files:
+      - none*   # tarball contains the binary only
+
+checksum:
+  name_template: 'checksums.txt'
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - '^docs?:'
+      - '^test:'
+      - '^chore:'
+      - '^ci:'
+      - 'Merge pull request'
+
+release:
+  prerelease: auto
+  draft: false
+
+brews:
+  - name: supplychain
+    description: "Supply-chain scanner for JS projects (manifest + lockfile + IOCs + OSV)"
+    homepage:    "https://github.com/noeljackson/supplychain"
+    repository:
+      owner:  noeljackson
+      name:   homebrew-tap
+      branch: main
+      token:  '{{ .Env.HOMEBREW_TAP_TOKEN }}'
+    directory: Formula
+    commit_author:
+      name:  github-actions[bot]
+      email: 41898282+github-actions[bot]@users.noreply.github.com
+    commit_msg_template: "supplychain: bump to {{ .Tag }}"
+    install: |
+      bin.install "supplychain"
+    test: |
+      system "#{bin}/supplychain", "version"
