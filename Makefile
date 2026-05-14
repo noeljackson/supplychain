@@ -1,8 +1,9 @@
 BIN      ?= supplychain
 PREFIX   ?= $(HOME)/.local
 BIN_DIR  ?= $(PREFIX)/bin
-LDFLAGS  ?= -s -w
 GOFLAGS  ?= -trimpath
+VERSION  ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
+LDFLAGS  ?= -s -w -X 'github.com/noeljackson/supplychain/cmd.Version=$(VERSION)'
 
 .PHONY: help all build install install-full uninstall test vet lint dist clean
 

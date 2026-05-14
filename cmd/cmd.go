@@ -7,11 +7,29 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"runtime/debug"
 	"strconv"
 	"strings"
 )
 
-const Version = "0.1.0"
+// Version is resolved (in priority order) from:
+//  1. -ldflags "-X github.com/noeljackson/supplychain/cmd.Version=..." at build
+//  2. runtime/debug.ReadBuildInfo() for `go install`-style builds
+//  3. the "dev" fallback for plain `go build` in a checkout
+var Version = "dev"
+
+func init() {
+	if Version != "dev" {
+		return
+	}
+	info, ok := debug.ReadBuildInfo()
+	if !ok {
+		return
+	}
+	if v := info.Main.Version; v != "" && v != "(devel)" {
+		Version = v
+	}
+}
 
 // Globals holds the parsed global flags + dependencies passed down to commands.
 type Globals struct {
