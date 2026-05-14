@@ -1,0 +1,72 @@
+name: brew-bump
+
+# After a successful release.yml run on a tag push, this workflow downloads
+# the newly-published binaries, computes their SHA256s, and commits an
+# updated Formula/supplychain.rb back to main. Keeps the brew formula in
+# lockstep with releases without manual intervention.
+
+on:
+  workflow_run:
+    workflows: [release]
+    types: [completed]
+
+permissions:
+  contents: write
+
+jobs:
+  bump:
+    if: ${{ github.event.workflow_run.conclusion == 'success' && startsWith(github.event.workflow_run.head_branch, 'v') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Resolve tag
+        id: tag
+        run: echo "tag=${{ github.event.workflow_run.head_branch }}" >> "$GITHUB_OUTPUT"
+
+      - name: Compute SHA256 of release assets
+        id: shas
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          mkdir -p /tmp/assets && cd /tmp/assets
+          for a in supplychain-darwin-amd64 supplychain-darwin-arm64 \
+                  supplychain-linux-amd64  supplychain-linux-arm64; do
+            gh release download "$TAG" -R "$GITHUB_REPOSITORY" -p "$a"
+          done
+          {
+            echo "darwin_amd64=$(sha256sum supplychain-darwin-amd64 | awk '{print $1}')"
+            echo "darwin_arm64=$(sha256sum supplychain-darwin-arm64 | awk '{print $1}')"
+            echo "linux_amd64=$(sha256sum supplychain-linux-amd64  | awk '{print $1}')"
+            echo "linux_arm64=$(sha256sum supplychain-linux-arm64  | awk '{print $1}')"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Rewrite Formula/supplychain.rb
+        env:
+          TAG:           ${{ steps.tag.outputs.tag }}
+          DARWIN_AMD64:  ${{ steps.shas.outputs.darwin_amd64 }}
+          DARWIN_ARM64:  ${{ steps.shas.outputs.darwin_arm64 }}
+          LINUX_AMD64:   ${{ steps.shas.outputs.linux_amd64 }}
+          LINUX_ARM64:   ${{ steps.shas.outputs.linux_arm64 }}
+        run: |
+          VER="${TAG#v}"
+          sed -i "s/^  version \".*\"/  version \"$VER\"/" Formula/supplychain.rb
+          # Replace per-platform sha lines. The Formula has each sha exactly once.
+          sed -i "/darwin-arm64$/{n;s/sha256 \".*\"/sha256 \"$DARWIN_ARM64\"/}" Formula/supplychain.rb
+          sed -i "/darwin-amd64$/{n;s/sha256 \".*\"/sha256 \"$DARWIN_AMD64\"/}" Formula/supplychain.rb
+          sed -i "/linux-arm64$/{n;s/sha256 \".*\"/sha256 \"$LINUX_ARM64\"/}"   Formula/supplychain.rb
+          sed -i "/linux-amd64$/{n;s/sha256 \".*\"/sha256 \"$LINUX_AMD64\"/}"   Formula/supplychain.rb
+
+      - name: Commit
+        run: |
+          if git diff --quiet Formula/supplychain.rb; then
+            echo "no change"; exit 0
+          fi
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Formula/supplychain.rb
+          git commit -m "brew: bump formula to ${{ steps.tag.outputs.tag }}"
+          git push

@@ -8,7 +8,19 @@ TARGET="${CLAUDE_PROJECT_DIR:-$PWD}"
 
 command -v supplychain >/dev/null 2>&1 || exit 0
 
-OUT="$(timeout 20 supplychain scan --quiet "$TARGET" 2>&1 || true)"
+# Resolve a portable timeout command. GNU coreutils ships `timeout`; macOS
+# does not by default (gtimeout via `brew install coreutils`). If neither is
+# present we run without a wall-clock cap and rely on supplychain's own
+# internal timeouts (registry: 8s, osv-scanner exec: 120s).
+if command -v timeout >/dev/null 2>&1; then
+  TIMEOUT="timeout 20"
+elif command -v gtimeout >/dev/null 2>&1; then
+  TIMEOUT="gtimeout 20"
+else
+  TIMEOUT=""
+fi
+
+OUT="$($TIMEOUT supplychain scan --quiet "$TARGET" 2>&1 || true)"
 if [ -n "$OUT" ]; then
   echo "supply-chain scanner: findings in $TARGET"
   echo "$OUT"
