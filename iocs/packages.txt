@@ -22,7 +22,13 @@
 @tanstack/solid-start@1.167.68
 @tanstack/vue-start@1.167.61
 @tanstack/vue-start@1.167.64
-@mistralai/mistralai@2.2.1
+# 2.2.1 (2026-04-21) was incorrectly listed here based on OSV MAL-2026-3432,
+# which uses an over-broad "introduced from version 0" SemVer range matching
+# every version. Static analysis of the 2.2.1 tarball found no IOC files, no
+# obfuscated single-line payloads, no malicious lifecycle scripts — only
+# routine Speakeasy-generated additions vs 2.2.0. Removed.
+# 2.2.2 (2026-05-11) has been UNPUBLISHED from the registry (E404) while
+# 2.2.3/2.2.4 remain — kept on this list as suspected malicious.
 @mistralai/mistralai@2.2.2
 @mistralai/mistralai@2.2.3
 @mistralai/mistralai@2.2.4
