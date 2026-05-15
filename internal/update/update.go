@@ -18,6 +18,8 @@ var IOCFiles = []string{
 	"persistence-paths.txt",
 	"payload-filenames.txt",
 	"packages.txt",
+	"c2-domains.txt",
+	"dead-drop-signatures.txt",
 }
 
 const (
