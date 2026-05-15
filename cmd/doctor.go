@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/noeljackson/supplychain/internal/osm"
 	"github.com/noeljackson/supplychain/internal/osv"
 	"github.com/noeljackson/supplychain/internal/update"
 )
@@ -29,6 +30,18 @@ func cmdDoctor(g *Globals, _ []string) int {
 		fmt.Printf("osv:     %s (%s)\n", path, ver)
 	} else {
 		fmt.Println("osv:     missing — run 'supplychain update' to install")
+	}
+
+	// OSM (OpenSourceMalware) enrichment
+	if osm.Token() == "" {
+		fmt.Println("osm:     disabled — set SUPPLYCHAIN_OSM_TOKEN to enable (free tier; non-commercial use only)")
+	} else {
+		cache, _ := osm.LoadCache(osm.CachePath(g.DataDir))
+		if cache == nil {
+			fmt.Println("osm:     token present but no cache yet — run 'supplychain update'")
+		} else {
+			fmt.Printf("osm:     %d cached IOCs (last fetch %s)\n", len(cache.Entries), cache.FetchedAt.Format("2006-01-02 15:04Z"))
+		}
 	}
 
 	// PATH

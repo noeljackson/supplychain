@@ -222,6 +222,11 @@ environment:
   SUPPLYCHAIN_IOC_URL   base URL for IOC data updates
                         (default: https://raw.githubusercontent.com/noeljackson/supplychain/main/iocs)
   SUPPLYCHAIN_PIN       git ref / tag to pin IOC data to (default: main)
+  SUPPLYCHAIN_OSM_TOKEN OpenSourceMalware.com bearer token (free tier ok).
+                        When set, 'supplychain update' fetches /query-latest
+                        and merges npm IOCs into the matcher set. Absent →
+                        OSM integration is a no-op. Free-tier TOS: non-
+                        commercial use only.
 `)
 }
 

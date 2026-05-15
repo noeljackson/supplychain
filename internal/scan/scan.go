@@ -11,6 +11,7 @@ import (
 	"github.com/noeljackson/supplychain/internal/maintainer"
 	"github.com/noeljackson/supplychain/internal/manifest"
 	"github.com/noeljackson/supplychain/internal/npmsig"
+	"github.com/noeljackson/supplychain/internal/osm"
 	"github.com/noeljackson/supplychain/internal/osv"
 	"github.com/noeljackson/supplychain/internal/registry"
 	"github.com/noeljackson/supplychain/internal/scripts"
@@ -45,6 +46,11 @@ type Options struct {
 
 	// TyposquatDistance overrides typosquat.DefaultMaxDistance when > 0.
 	TyposquatDistance int
+
+	// OSMCachePath is the path to the OSM IOC cache (osm-cache.json).
+	// When non-empty and the file exists, its package IOCs are unioned
+	// into the matcher set.
+	OSMCachePath string
 }
 
 // Findings is the aggregated result of a scan.
@@ -90,6 +96,11 @@ func Run(opts Options) (Findings, error) {
 	pkgs, err := ioc.LoadPackages(opts.OpenIOC)
 	if err != nil {
 		return f, err
+	}
+	if opts.OSMCachePath != "" {
+		if extra, err := osm.LoadCacheAsPackageIOCs(opts.OSMCachePath); err == nil && len(extra) > 0 {
+			pkgs = append(pkgs, extra...)
+		}
 	}
 	persistList, err := ioc.LoadList(opts.OpenIOC, "persistence-paths.txt")
 	if err != nil {
