@@ -1,0 +1,9 @@
+# Git commit signatures used by self-spreading supply-chain worms to drop
+# malicious commits into victim repos. Format: tab-separated author<TAB>message-substring.
+# Both must match for a commit to be flagged. Comments and blank lines are
+# ignored. During `supplychain audit-system`, `git log --all` is walked
+# across every git repo under --git-root and each commit's author email +
+# subject line is checked against this list.
+
+# Shai-Hulud / Mini Shai-Hulud (2026, npm) — worm propagation dead-drop
+claude@users.noreply.github.com	chore: update dependencies

@@ -1,0 +1,10 @@
+# Network IOCs — domains observed as command-and-control endpoints for known
+# supply-chain malware. Greppped against shell history files
+# (~/.bash_history, ~/.zsh_history, ~/.python_history, ~/.node_repl_history,
+# ~/.npm/_logs/*.log) during `supplychain audit-system`.
+
+# Shai-Hulud / Mini Shai-Hulud (2026, npm)
+api.masscan.cloud
+git-tanstack.com
+filev2.getsession.org
+seed1.getsession.org

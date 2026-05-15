@@ -98,6 +98,8 @@ func Run(defaultIOCs embed.FS) int {
 		return cmdDoctor(g, args)
 	case "install-hook":
 		return cmdInstallHook(g, args)
+	case "audit-system":
+		return cmdAuditSystem(g, args)
 	case "version", "--version", "-v":
 		fmt.Println("supplychain", Version)
 		return 0
@@ -184,6 +186,10 @@ usage: supplychain <command> [args] [flags]
 commands:
   scan [path]           scan a path (default: cwd) for known-bad deps + IOCs
   scan-all [root]       scan every git repo under root (default: ~/src)
+  audit-system [flags]  forensic sweep: persistence files, dropped payloads
+                        anywhere under $HOME, C2 domains in shell history,
+                        dead-drop commit signatures across all git repos.
+                        Flags: --git-root=PATH (default ~/src)
   update                refresh IOC data and osv-scanner
   install-hook <kind>   install integration hook: claude-sessionstart | pre-commit
   doctor                check install health
