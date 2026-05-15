@@ -5,6 +5,7 @@
 
 # --- frameworks & meta-frameworks ---
 react
+preact
 react-dom
 react-native
 vue
@@ -106,6 +107,7 @@ json5
 xml2js
 papaparse
 csv-parse
+xlsx
 
 # --- ids / crypto ---
 uuid
@@ -191,6 +193,7 @@ react-hook-form
 mongoose
 mongodb
 pg
+mysql
 mysql2
 sqlite3
 redis

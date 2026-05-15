@@ -22,6 +22,8 @@
 @tanstack/solid-start@1.167.68
 @tanstack/vue-start@1.167.61
 @tanstack/vue-start@1.167.64
+@mistralai/mistralai@2.2.1
+@mistralai/mistralai@2.2.2
 @mistralai/mistralai@2.2.3
 @mistralai/mistralai@2.2.4
 @mistralai/mistralai-azure@1.7.2
