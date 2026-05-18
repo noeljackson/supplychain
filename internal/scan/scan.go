@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io/fs"
 
+	"github.com/noeljackson/supplychain/internal/drift"
 	"github.com/noeljackson/supplychain/internal/freshness"
 	"github.com/noeljackson/supplychain/internal/ioc"
 	"github.com/noeljackson/supplychain/internal/maintainer"
@@ -67,6 +68,7 @@ type Findings struct {
 	Typosquat   []typosquat.Hit        `json:"typosquat_hits"`
 	Signatures  []npmsig.Hit           `json:"signature_hits"`
 	Maintainers []maintainer.Hit       `json:"maintainer_changes"`
+	Drift       []drift.Hit            `json:"drift_hits"`
 
 	OSVAvailable bool `json:"osv_available"`
 }
@@ -83,7 +85,8 @@ func (f Findings) HasHits() bool {
 		len(f.Persistence) > 0 ||
 		len(f.Typosquat) > 0 ||
 		len(f.Signatures) > 0 ||
-		len(f.Maintainers) > 0
+		len(f.Maintainers) > 0 ||
+		len(f.Drift) > 0
 }
 
 // Run executes the scan.
@@ -131,6 +134,11 @@ func Run(opts Options) (Findings, error) {
 	f.Persistence = ioc.CheckPersistence(persistList)
 
 	f.Scripts, err = scripts.ScanInstalled(opts.Target)
+	if err != nil {
+		return f, err
+	}
+
+	f.Drift, err = drift.ScanRepo(opts.Target)
 	if err != nil {
 		return f, err
 	}

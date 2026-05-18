@@ -117,6 +117,22 @@ func Human(w io.Writer, f scan.Findings, opts Options) int {
 			fmt.Fprintf(w, "    current:  %s\n", strings.Join(h.Current, ", "))
 		}
 	}
+	if len(f.Drift) > 0 {
+		fmt.Fprintln(w)
+		fmt.Fprintln(w, "Manifest/lockfile drift:")
+		for _, h := range f.Drift {
+			switch h.Reason {
+			case "missing-from-lockfile":
+				fmt.Fprintf(w, "  %s declared in %s but absent from lockfile — stale lockfile (range %q, lockfile %s)\n",
+					h.Name, h.Section, h.Range, h.LockFile)
+			case "lockfile-out-of-range":
+				fmt.Fprintf(w, "  %s manifest=%q lockfile=%s — lockfile pin doesn't satisfy manifest range (in %s)\n",
+					h.Name, h.Range, h.LockVersion, h.Section)
+			default:
+				fmt.Fprintf(w, "  %s — %s\n", h.Name, h.Reason)
+			}
+		}
+	}
 	renderFreshness(w, f)
 	if opts.ShowScripts && len(f.Scripts) > 0 {
 		renderScripts(w, f, false)
