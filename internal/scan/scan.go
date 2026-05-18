@@ -116,7 +116,7 @@ func Run(opts Options) (Findings, error) {
 		blockedNames = nil
 	}
 
-	f.Manifest, err = manifest.ScanRepo(opts.Target, pkgs, blockedNames)
+	f.Manifest, err = manifest.ScanRepo(opts.Target, pkgs, blockedNames, opts.Registry)
 	if err != nil {
 		return f, err
 	}

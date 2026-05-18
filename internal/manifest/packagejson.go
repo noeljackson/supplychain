@@ -4,6 +4,7 @@ package manifest
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/fs"
 	"os"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/Masterminds/semver/v3"
 	"github.com/noeljackson/supplychain/internal/ioc"
+	"github.com/noeljackson/supplychain/internal/registry"
 )
 
 // PackageJSON is a minimal model of the parts of package.json we care about.
@@ -31,13 +33,30 @@ type ManifestHit struct {
 	Name       string  // package name
 	Range      string  // raw version spec from the manifest
 	BadVersion string  // the IOC version that the range matches
-	Reason     string  // "exact-match" | "range-includes" | "unknown-spec"
+	Reason     string  // "exact-match" | "range-includes" | "unknown-spec" | "name-blocked"
+
+	// Resolved is the version `npm install` would pick today for the (name,
+	// Range) pair — the highest currently-published version satisfying the
+	// range. Empty when resolution isn't applicable (exact-match), wasn't
+	// attempted (no registry client), or failed.
+	Resolved string
+
+	// ResolvedBad is true when Resolved is itself a known-bad version. This
+	// converts a theoretical risk ("range includes a bad version") into a
+	// concrete risk ("you WILL install the bad version on next `npm install`").
+	ResolvedBad bool
 }
 
 // ScanRepo walks `root` finding package.json files (skipping node_modules and
 // .git), parses each, and returns matches against the provided IOC list and
 // the blocked-names set (any version of a blocked name = hit).
-func ScanRepo(root string, iocs []ioc.PackageIOC, blockedNames []string) ([]ManifestHit, error) {
+//
+// When reg is non-nil, each range-style hit gets an additional resolution
+// check: we ask the registry what `npm install` would actually pick for
+// (name, range) today, and surface that in ManifestHit.Resolved. If the
+// resolved version is also a known-bad version, ResolvedBad is set — that's
+// the "you will install the malicious version on next install" signal.
+func ScanRepo(root string, iocs []ioc.PackageIOC, blockedNames []string, reg *registry.Client) ([]ManifestHit, error) {
 	index := indexByName(iocs)
 	blocked := indexSet(blockedNames)
 
@@ -60,10 +79,71 @@ func ScanRepo(root string, iocs []ioc.PackageIOC, blockedNames []string) ([]Mani
 		if err != nil {
 			return nil // malformed package.json — skip, don't abort scan
 		}
+		// Enrich range-style hits with the current-install resolution.
+		if reg != nil {
+			for i := range fileHits {
+				h := &fileHits[i]
+				if h.Reason == "exact-match" || h.Reason == "name-blocked" {
+					continue
+				}
+				resolved, err := resolveRange(reg, h.Name, h.Range)
+				if err != nil || resolved == nil {
+					continue
+				}
+				h.Resolved = resolved.String()
+				if isBadVersion(index[h.Name], resolved) {
+					h.ResolvedBad = true
+				}
+			}
+		}
 		hits = append(hits, fileHits...)
 		return nil
 	})
 	return hits, err
+}
+
+// resolveRange models `npm install <name>@<spec>` resolution: the highest
+// currently-published version satisfying spec, ignoring pre-releases (npm
+// excludes them by default). Returns nil with err when spec doesn't parse or
+// no version matches.
+func resolveRange(reg *registry.Client, name, spec string) (*semver.Version, error) {
+	c, err := semver.NewConstraint(spec)
+	if err != nil {
+		return nil, err
+	}
+	p, err := reg.Get(name)
+	if err != nil {
+		return nil, err
+	}
+	var best *semver.Version
+	for v := range p.Versions {
+		ver, err := semver.NewVersion(v)
+		if err != nil {
+			continue
+		}
+		if ver.Prerelease() != "" {
+			continue
+		}
+		if !c.Check(ver) {
+			continue
+		}
+		if best == nil || ver.GreaterThan(best) {
+			best = ver
+		}
+	}
+	if best == nil {
+		return nil, errors.New("no version satisfies range")
+	}
+	return best, nil
+}
+
+func isBadVersion(entries []ioc.PackageIOC, v *semver.Version) bool {
+	for _, e := range entries {
+		if e.Parsed != nil && e.Parsed.Equal(v) {
+			return true
+		}
+	}
+	return false
 }
 
 func indexSet(names []string) map[string]struct{} {

@@ -29,9 +29,14 @@ type Maintainer struct {
 // Packument is the relevant subset of npm's registry response.
 // The full document is large; we only decode the fields we care about.
 type Packument struct {
-	Name        string               `json:"name"`
-	Time        map[string]time.Time `json:"time"`
-	Maintainers []Maintainer         `json:"maintainers"`
+	Name        string                     `json:"name"`
+	Time        map[string]time.Time       `json:"time"`
+	Maintainers []Maintainer               `json:"maintainers"`
+	DistTags    map[string]string          `json:"dist-tags"`
+	// Versions holds entries for currently-published versions only. We don't
+	// decode the per-version metadata — just the set of keys — so a small
+	// stub is enough. Unpublished versions still appear in Time but not here.
+	Versions map[string]struct{} `json:"versions"`
 }
 
 // Client is a cached registry HTTP client.
