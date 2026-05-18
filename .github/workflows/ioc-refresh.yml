@@ -23,14 +23,20 @@ jobs:
 
       - name: Run scrapers
         id: scrape
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           mkdir -p /tmp/ioc-scrape
           python3 scripts/scrape_iocs.py \
             --packages iocs/packages.txt \
+            --blocked  iocs/blocked-package-names.txt \
             --persistence iocs/persistence-paths.txt \
             --payloads iocs/payload-filenames.txt \
             --report /tmp/ioc-scrape/report.md \
-          || { echo "scrapers reported no new entries"; exit 0; }
+          || echo "scrapers reported no new entries"
+          echo "::group::scrape report"
+          cat /tmp/ioc-scrape/report.md || echo "(no report written)"
+          echo "::endgroup::"
 
       - name: Check for diff
         id: diff
@@ -39,7 +45,8 @@ jobs:
             echo "no-changes"
             echo "changed=false" >> "$GITHUB_OUTPUT"
           else
-            echo "iocs/ changed"
+            echo "iocs/ changed:"
+            git -P diff --stat iocs/
             echo "changed=true" >> "$GITHUB_OUTPUT"
           fi
 

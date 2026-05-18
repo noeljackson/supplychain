@@ -16,6 +16,7 @@ type LockHit struct {
 	File    string `json:"file"`
 	Name    string `json:"name"`
 	Version string `json:"version"`
+	Reason  string `json:"reason,omitempty"` // "version-match" (default) or "name-blocked"
 }
 
 // ScanLockfiles walks root looking for known lockfile formats and reports IOC
@@ -25,11 +26,15 @@ type LockHit struct {
 // appearing on the same line as the name (it's a multi-line format). For
 // pnpm-lock.yaml, yarn.lock, and bun.lock the canonical entry has the
 // package@version pair on one line, so a line-based regex is enough.
-func ScanLockfiles(root string, iocs []ioc.PackageIOC) ([]LockHit, error) {
-	if len(iocs) == 0 {
+func ScanLockfiles(root string, iocs []ioc.PackageIOC, blockedNames []string) ([]LockHit, error) {
+	if len(iocs) == 0 && len(blockedNames) == 0 {
 		return nil, nil
 	}
 	needles := indexNeedles(iocs)
+	blocked := make(map[string]struct{}, len(blockedNames))
+	for _, n := range blockedNames {
+		blocked[n] = struct{}{}
+	}
 
 	var hits []LockHit
 	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, walkErr error) error {
@@ -49,9 +54,9 @@ func ScanLockfiles(root string, iocs []ioc.PackageIOC) ([]LockHit, error) {
 		)
 		switch d.Name() {
 		case "package-lock.json":
-			fileHits, err = scanNpmLock(path, needles)
+			fileHits, err = scanNpmLock(path, needles, blocked)
 		case "pnpm-lock.yaml", "yarn.lock", "bun.lock":
-			fileHits, err = scanLineLockfile(path, needles)
+			fileHits, err = scanLineLockfile(path, needles, blocked)
 		default:
 			return nil
 		}
@@ -83,7 +88,7 @@ func indexNeedles(iocs []ioc.PackageIOC) map[string]map[string]struct{} {
 //	}
 //
 // Older v1 lockfiles use "dependencies" recursively, which we also handle.
-func scanNpmLock(path string, needles map[string]map[string]struct{}) ([]LockHit, error) {
+func scanNpmLock(path string, needles map[string]map[string]struct{}, blocked map[string]struct{}) ([]LockHit, error) {
 	b, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
@@ -106,14 +111,18 @@ func scanNpmLock(path string, needles map[string]map[string]struct{}) ([]LockHit
 		if name == "" {
 			continue
 		}
+		if _, bad := blocked[name]; bad {
+			hits = append(hits, LockHit{File: path, Name: name, Version: entry.Version, Reason: "name-blocked"})
+			continue
+		}
 		if versions, ok := needles[name]; ok {
 			if _, bad := versions[entry.Version]; bad {
-				hits = append(hits, LockHit{File: path, Name: name, Version: entry.Version})
+				hits = append(hits, LockHit{File: path, Name: name, Version: entry.Version, Reason: "version-match"})
 			}
 		}
 	}
 	for name, dep := range doc.Dependencies {
-		walkV1(name, dep, needles, &hits, path)
+		walkV1(name, dep, needles, blocked, &hits, path)
 	}
 	return hits, nil
 }
@@ -123,20 +132,22 @@ type npmV1Dep struct {
 	Dependencies map[string]npmV1Dep `json:"dependencies"`
 }
 
-func walkV1(name string, dep npmV1Dep, needles map[string]map[string]struct{}, hits *[]LockHit, path string) {
-	if versions, ok := needles[name]; ok {
+func walkV1(name string, dep npmV1Dep, needles map[string]map[string]struct{}, blocked map[string]struct{}, hits *[]LockHit, path string) {
+	if _, bad := blocked[name]; bad {
+		*hits = append(*hits, LockHit{File: path, Name: name, Version: dep.Version, Reason: "name-blocked"})
+	} else if versions, ok := needles[name]; ok {
 		if _, bad := versions[dep.Version]; bad {
-			*hits = append(*hits, LockHit{File: path, Name: name, Version: dep.Version})
+			*hits = append(*hits, LockHit{File: path, Name: name, Version: dep.Version, Reason: "version-match"})
 		}
 	}
 	for child, sub := range dep.Dependencies {
-		walkV1(child, sub, needles, hits, path)
+		walkV1(child, sub, needles, blocked, hits, path)
 	}
 }
 
 // scanLineLockfile handles formats where each (name, version) pair appears on
 // a single line: pnpm-lock.yaml, yarn.lock, bun.lock.
-func scanLineLockfile(path string, needles map[string]map[string]struct{}) ([]LockHit, error) {
+func scanLineLockfile(path string, needles map[string]map[string]struct{}, blocked map[string]struct{}) ([]LockHit, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, err
@@ -150,6 +161,19 @@ func scanLineLockfile(path string, needles map[string]map[string]struct{}) ([]Lo
 	sc.Buffer(make([]byte, 0, 64*1024), 8*1024*1024) // bun.lock can have huge lines
 	for sc.Scan() {
 		line := sc.Text()
+		// Blocked-name: any line that mentions a blocked name is a hit. Deduped
+		// once per (file, name) — we don't try to extract the version here
+		// because the matcher's purpose is to flag the name's presence, period.
+		for bname := range blocked {
+			if strings.Contains(line, bname) {
+				key := bname + "\x00*"
+				if _, dup := seen[key]; dup {
+					continue
+				}
+				seen[key] = struct{}{}
+				hits = append(hits, LockHit{File: path, Name: bname, Version: "(any)", Reason: "name-blocked"})
+			}
+		}
 		for name, versions := range needles {
 			if !strings.Contains(line, name) {
 				continue
@@ -164,7 +188,7 @@ func scanLineLockfile(path string, needles map[string]map[string]struct{}) ([]Lo
 					continue
 				}
 				seen[key] = struct{}{}
-				hits = append(hits, LockHit{File: path, Name: name, Version: v})
+				hits = append(hits, LockHit{File: path, Name: name, Version: v, Reason: "version-match"})
 			}
 		}
 	}

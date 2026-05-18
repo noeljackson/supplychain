@@ -110,12 +110,17 @@ func Run(opts Options) (Findings, error) {
 	if err != nil {
 		return f, err
 	}
+	blockedNames, err := ioc.LoadList(opts.OpenIOC, "blocked-package-names.txt")
+	if err != nil {
+		// File may not exist on older overrides — treat as empty.
+		blockedNames = nil
+	}
 
-	f.Manifest, err = manifest.ScanRepo(opts.Target, pkgs)
+	f.Manifest, err = manifest.ScanRepo(opts.Target, pkgs, blockedNames)
 	if err != nil {
 		return f, err
 	}
-	f.Lockfile, err = manifest.ScanLockfiles(opts.Target, pkgs)
+	f.Lockfile, err = manifest.ScanLockfiles(opts.Target, pkgs, blockedNames)
 	if err != nil {
 		return f, err
 	}

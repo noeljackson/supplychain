@@ -20,6 +20,7 @@ var IOCFiles = []string{
 	"packages.txt",
 	"c2-domains.txt",
 	"dead-drop-signatures.txt",
+	"blocked-package-names.txt",
 }
 
 const (

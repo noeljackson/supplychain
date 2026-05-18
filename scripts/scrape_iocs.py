@@ -59,13 +59,17 @@ def append(path: Path, entries: list[str], header: str) -> int:
 
 # ---------- GHSA via the gh CLI ----------
 
-def ghsa_npm_malware(since_days: int) -> list[tuple[str, str, str]]:
+def ghsa_npm_malware(since_days: int):
     """
-    Returns (name, version, ghsa_id) tuples from npm-ecosystem advisories
-    classified as MALWARE, published in the last `since_days` days.
-
-    Uses the `gh` CLI (assumed authed in the workflow). Falls back to an
-    empty list on failure — never raises.
+    Query GHSA for npm-ecosystem MALWARE advisories published in the last
+    `since_days` days. Returns:
+      (
+        pinned:  list of (name, version, ghsa_id) — concrete version pins,
+        blocked: list of (name, ghsa_id) — "all versions affected" entries
+                  with vulnerableVersionRange ">= 0".
+      )
+    Uses the `gh` CLI (assumed authed in the workflow). Falls back to empty
+    on any failure — never raises.
     """
     cutoff = (dt.datetime.utcnow() - dt.timedelta(days=since_days)).strftime("%Y-%m-%dT%H:%M:%SZ")
     query = """
@@ -98,33 +102,42 @@ query($cutoff: DateTime!) {
         ).stdout
     except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired) as e:
         print(f"warn: ghsa query failed: {e}", file=sys.stderr)
-        return []
+        return [], []
 
     try:
         doc = json.loads(out)
     except json.JSONDecodeError:
-        return []
+        return [], []
 
-    found: list[tuple[str, str, str]] = []
+    pinned: list[tuple[str, str, str]] = []
+    blocked: list[tuple[str, str]] = []
     for adv in doc.get("data", {}).get("securityAdvisories", {}).get("nodes", []) or []:
         gid = adv.get("ghsaId", "")
         for vuln in (adv.get("vulnerabilities") or {}).get("nodes", []) or []:
             name = (vuln.get("package") or {}).get("name", "")
-            rng  = vuln.get("vulnerableVersionRange") or ""
+            rng  = (vuln.get("vulnerableVersionRange") or "").strip()
+            if not name:
+                continue
+            if _ALL_VERSIONS_RE.match(rng):
+                blocked.append((name, gid))
+                continue
             for ver in versions_from_range(rng):
-                if name and ver:
-                    found.append((name, ver, gid))
-    return found
+                pinned.append((name, ver, gid))
+    return pinned, blocked
 
 
+# Matches the canonical "all versions affected" range emitted by GHSA when a
+# package has no clean version: ">= 0" (with optional spaces). This is the
+# overwhelming majority of MAL-* advisories — packages published purely
+# for malice.
+_ALL_VERSIONS_RE = re.compile(r"^>=\s*0(?:\.0(?:\.0)?)?$")
 _VER_RE = re.compile(r"\b\d+\.\d+\.\d+(?:-[A-Za-z0-9.\-]+)?\b")
 
 def versions_from_range(rng: str) -> list[str]:
     """
-    Extract specific versions referenced in a vulnerableVersionRange string
-    like '= 1.161.11' or '>= 1.161.11, < 1.161.15'. We only emit IOC
-    entries for ranges that pin a single version (e.g. '= 1.161.11'),
-    since broader ranges can match benign earlier versions.
+    Extract specific versions from a vulnerableVersionRange like '= 1.161.11'.
+    Only handles single-version pins (`= X.Y.Z`). Broader ranges and "all
+    versions" entries are handled by ALL_VERSIONS_RE in the caller.
     """
     s = rng.strip()
     if not s.startswith("="):
@@ -137,35 +150,56 @@ def versions_from_range(rng: str) -> list[str]:
 
 def main() -> int:
     p = argparse.ArgumentParser()
-    p.add_argument("--packages",    type=Path, required=True)
-    p.add_argument("--persistence", type=Path, required=True)
-    p.add_argument("--payloads",    type=Path, required=True)
-    p.add_argument("--report",      type=Path, required=True)
-    p.add_argument("--since-days",  type=int,  default=14)
+    p.add_argument("--packages",     type=Path, required=True)
+    p.add_argument("--blocked",      type=Path, required=True)
+    p.add_argument("--persistence",  type=Path, required=True)
+    p.add_argument("--payloads",     type=Path, required=True)
+    p.add_argument("--report",       type=Path, required=True)
+    p.add_argument("--since-days",   type=int,  default=14)
     args = p.parse_args()
 
     summary: list[str] = ["# IOC refresh report", ""]
 
-    ghsa_hits = ghsa_npm_malware(since_days=args.since_days)
-    pkg_entries = [f"{n}@{v}" for (n, v, _) in ghsa_hits]
+    pinned, blocked = ghsa_npm_malware(since_days=args.since_days)
+
+    # 1) concrete-version pins → iocs/packages.txt
+    pkg_entries = sorted({f"{n}@{v}" for (n, v, _) in pinned})
     added_pkg = append(
         args.packages, pkg_entries,
-        f"GHSA MALWARE advisories (npm, last {args.since_days}d)",
+        f"GHSA MALWARE advisories — version pins (npm, last {args.since_days}d)",
     )
-    summary.append(f"## packages.txt — +{added_pkg}")
+    summary.append(f"## packages.txt — +{added_pkg} (out of {len(pinned)} pin entries returned)")
     if added_pkg:
-        for (n, v, gid) in ghsa_hits:
+        for (n, v, gid) in sorted(set(pinned)):
             if f"{n}@{v}" in pkg_entries:
                 summary.append(f"- `{n}@{v}` ([{gid}](https://github.com/advisories/{gid}))")
+
+    # 2) all-versions advisories → iocs/blocked-package-names.txt
+    block_entries = sorted({n for (n, _) in blocked})
+    added_block = append(
+        args.blocked, block_entries,
+        f"GHSA MALWARE advisories — all-versions ranges (npm, last {args.since_days}d)",
+    )
+    summary.append("")
+    summary.append(f"## blocked-package-names.txt — +{added_block} (out of {len(blocked)} all-versions entries)")
+    if added_block:
+        # show up to 20 in the report so reviewers see a sample
+        per_name_ids = {}
+        for (n, gid) in blocked:
+            per_name_ids.setdefault(n, gid)
+        for n in block_entries[:20]:
+            summary.append(f"- `{n}` ([{per_name_ids.get(n, '')}](https://github.com/advisories/{per_name_ids.get(n, '')}))")
+        if added_block > 20:
+            summary.append(f"- _… and {added_block - 20} more (see diff)_")
+
     summary.append("")
     summary.append("## persistence-paths.txt — +0 (no scraper wired yet)")
-    summary.append("## payload-filenames.txt — +0 (no scraper wired yet)")
+    summary.append("## payload-filenames.txt  — +0 (no scraper wired yet)")
 
     args.report.parent.mkdir(parents=True, exist_ok=True)
     args.report.write_text("\n".join(summary))
 
-    total = added_pkg
-    if total == 0:
+    if added_pkg == 0 and added_block == 0:
         return 1  # workflow uses this to short-circuit
     return 0
 

@@ -32,7 +32,7 @@ func TestScanNpmLock_V3_WalksPackagesMap(t *testing.T) {
 		{Name: "@tanstack/router-utils", Version: "1.161.11", Parsed: mustVer(t, "1.161.11")},
 		{Name: "unrelated", Version: "9.9.9"},
 	}
-	hits, err := ScanLockfiles(dir, iocs)
+	hits, err := ScanLockfiles(dir, iocs, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -71,7 +71,7 @@ packages:
 		{Name: "@tanstack/router-utils", Version: "1.161.11"},
 		{Name: "safe-action", Version: "0.8.4"},
 	}
-	hits, err := ScanLockfiles(dir, iocs)
+	hits, err := ScanLockfiles(dir, iocs, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

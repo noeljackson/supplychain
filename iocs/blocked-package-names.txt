@@ -1,0 +1,10 @@
+# Package names where every published version is malicious. Used for entries
+# where the advisory says "introduced from 0" (i.e., the package was created
+# for malice and has no clean version to recover to).
+#
+# One name per line; comments (#) and blanks ignored. Scoped packages OK
+# (@scope/name). Any installed/declared dependency with a matching name is
+# flagged regardless of version.
+#
+# Auto-populated by .github/workflows/ioc-refresh.yml from GHSA MALWARE
+# advisories with vulnerableVersionRange ">= 0". Edit manually as needed.

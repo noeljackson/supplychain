@@ -35,9 +35,11 @@ type ManifestHit struct {
 }
 
 // ScanRepo walks `root` finding package.json files (skipping node_modules and
-// .git), parses each, and returns matches against the provided IOC list.
-func ScanRepo(root string, iocs []ioc.PackageIOC) ([]ManifestHit, error) {
+// .git), parses each, and returns matches against the provided IOC list and
+// the blocked-names set (any version of a blocked name = hit).
+func ScanRepo(root string, iocs []ioc.PackageIOC, blockedNames []string) ([]ManifestHit, error) {
 	index := indexByName(iocs)
+	blocked := indexSet(blockedNames)
 
 	var hits []ManifestHit
 	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, walkErr error) error {
@@ -54,7 +56,7 @@ func ScanRepo(root string, iocs []ioc.PackageIOC) ([]ManifestHit, error) {
 		if d.Name() != "package.json" {
 			return nil
 		}
-		fileHits, err := scanFile(path, index)
+		fileHits, err := scanFile(path, index, blocked)
 		if err != nil {
 			return nil // malformed package.json — skip, don't abort scan
 		}
@@ -62,6 +64,14 @@ func ScanRepo(root string, iocs []ioc.PackageIOC) ([]ManifestHit, error) {
 		return nil
 	})
 	return hits, err
+}
+
+func indexSet(names []string) map[string]struct{} {
+	m := make(map[string]struct{}, len(names))
+	for _, n := range names {
+		m[n] = struct{}{}
+	}
+	return m
 }
 
 func indexByName(iocs []ioc.PackageIOC) map[string][]ioc.PackageIOC {
@@ -72,7 +82,7 @@ func indexByName(iocs []ioc.PackageIOC) map[string][]ioc.PackageIOC {
 	return out
 }
 
-func scanFile(path string, idx map[string][]ioc.PackageIOC) ([]ManifestHit, error) {
+func scanFile(path string, idx map[string][]ioc.PackageIOC, blocked map[string]struct{}) ([]ManifestHit, error) {
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
@@ -93,6 +103,18 @@ func scanFile(path string, idx map[string][]ioc.PackageIOC) ([]ManifestHit, erro
 		{"optionalDependencies", pj.OptionalDependencies},
 	} {
 		for name, spec := range sect.deps {
+			// Blocked-name match: any version is bad.
+			if _, bad := blocked[name]; bad {
+				hits = append(hits, ManifestHit{
+					File:       path,
+					Section:    sect.name,
+					Name:       name,
+					Range:      spec,
+					BadVersion: "(any)",
+					Reason:     "name-blocked",
+				})
+				continue
+			}
 			entries, ok := idx[name]
 			if !ok {
 				continue
