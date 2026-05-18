@@ -58,6 +58,13 @@ func Human(w io.Writer, f scan.Findings, opts Options) int {
 		for _, h := range f.Manifest {
 			fmt.Fprintf(w, "  %s@%s declared as %q (%s) in %s — %s\n",
 				h.Name, h.BadVersion, h.Range, h.Reason, h.Section, h.File)
+			if h.Resolved != "" {
+				if h.ResolvedBad {
+					fmt.Fprintf(w, "    will install %s on next `npm install` — RESOLVES TO A MALICIOUS VERSION\n", h.Resolved)
+				} else {
+					fmt.Fprintf(w, "    will install %s on next `npm install` (currently a non-flagged version)\n", h.Resolved)
+				}
+			}
 		}
 	}
 	if len(f.Lockfile) > 0 {
