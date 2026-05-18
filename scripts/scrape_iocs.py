@@ -72,6 +72,12 @@ def ghsa_npm_malware(since_days: int):
     on any failure — never raises.
     """
     cutoff = (dt.datetime.utcnow() - dt.timedelta(days=since_days)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    # `withdrawnAt` is fetched explicitly so we can drop retracted entries.
+    # We don't use a top-level `withdrawn: false` argument because it isn't a
+    # supported field on the securityAdvisories query. Example we were leaking
+    # without this filter: GHSA-grrc-v84p-qwv3 ("Malware in
+    # @puppeteer/browsers" 3.0.1) was published+retracted same-day, and the
+    # legit Google-maintained @puppeteer/browsers ended up on the IOC list.
     query = """
 query($cutoff: DateTime!) {
   securityAdvisories(
@@ -83,6 +89,7 @@ query($cutoff: DateTime!) {
     nodes {
       ghsaId
       summary
+      withdrawnAt
       vulnerabilities(first: 50, ecosystem: NPM) {
         nodes {
           package { name }
@@ -112,6 +119,10 @@ query($cutoff: DateTime!) {
     pinned: list[tuple[str, str, str]] = []
     blocked: list[tuple[str, str]] = []
     for adv in doc.get("data", {}).get("securityAdvisories", {}).get("nodes", []) or []:
+        # Belt-and-suspenders: drop withdrawn entries client-side too, even
+        # though the GraphQL filter should have excluded them.
+        if adv.get("withdrawnAt"):
+            continue
         gid = adv.get("ghsaId", "")
         for vuln in (adv.get("vulnerabilities") or {}).get("nodes", []) or []:
             name = (vuln.get("package") or {}).get("name", "")
