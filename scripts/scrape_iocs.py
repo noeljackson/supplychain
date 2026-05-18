@@ -29,8 +29,69 @@ import os
 import re
 import subprocess
 import sys
+import urllib.error
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+
+
+# ---------- npm "security holder" enrichment ----------
+
+# When npm staff confirm a package is malicious and pull it, the registry slot
+# is replaced with a stub matching this exact shape. Detecting it gives us a
+# stronger trust signal than the GHSA classification alone — independent
+# verification that an org separate from the GHSA reporter has acted.
+_SEC_HOLDER_REPO = "npm/security-holder"
+_SEC_HOLDER_LATEST = "0.0.1-security"
+
+
+def npm_status(name: str, timeout: float = 8.0) -> str:
+    """Return one of: 'npm-confirmed', 'still-active', 'unpublished', 'unknown'.
+
+    'npm-confirmed' = registry shows a security-holder placeholder.
+    'still-active'  = package is live with real metadata.
+    'unpublished'   = 404 (package was removed but no holder placed yet).
+    'unknown'       = transient failure; reviewer should re-check manually.
+    """
+    # url-encode scoped names
+    enc = name.replace("/", "%2F") if name.startswith("@") else name
+    url = f"https://registry.npmjs.org/{enc}"
+    try:
+        req = urllib.request.Request(url, headers={"Accept": "application/json"})
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            d = json.loads(r.read())
+    except urllib.error.HTTPError as e:
+        return "unpublished" if e.code == 404 else "unknown"
+    except Exception:
+        return "unknown"
+
+    latest = (d.get("dist-tags") or {}).get("latest", "")
+    desc = d.get("description", "")
+    repo = d.get("repository")
+    if isinstance(repo, dict):
+        repo = repo.get("url", "")
+    if latest == _SEC_HOLDER_LATEST or repo == _SEC_HOLDER_REPO or desc == "security holding package":
+        return "npm-confirmed"
+    return "still-active"
+
+
+def bulk_npm_status(names: list[str], workers: int = 4) -> dict[str, str]:
+    """Resolve npm_status for each name with bounded concurrency."""
+    out: dict[str, str] = {}
+    if not names:
+        return out
+    with ThreadPoolExecutor(max_workers=workers) as ex:
+        for name, status in zip(names, ex.map(npm_status, names)):
+            out[name] = status
+    return out
+
+
+_STATUS_ICON = {
+    "npm-confirmed": "✓",
+    "still-active":  "⚠",
+    "unpublished":   "·",
+    "unknown":       "?",
+}
 
 
 def existing_lines(path: Path) -> set[str]:
@@ -173,6 +234,16 @@ def main() -> int:
 
     pinned, blocked = ghsa_npm_malware(since_days=args.since_days)
 
+    # Pre-resolve npm status for every distinct package name being added, with
+    # bounded concurrency so we don't hammer the registry.
+    names_to_check = sorted({n for (n, _, _) in pinned} | {n for (n, _) in blocked})
+    statuses = bulk_npm_status(names_to_check, workers=4)
+
+    legend = (
+        "_npm status legend: ✓ npm-confirmed (security-holder) · "
+        "⚠ still-active · · unpublished (no holder) · ? unknown_"
+    )
+
     # 1) concrete-version pins → iocs/packages.txt
     pkg_entries = sorted({f"{n}@{v}" for (n, v, _) in pinned})
     added_pkg = append(
@@ -180,10 +251,12 @@ def main() -> int:
         f"GHSA MALWARE advisories — version pins (npm, last {args.since_days}d)",
     )
     summary.append(f"## packages.txt — +{added_pkg} (out of {len(pinned)} pin entries returned)")
+    summary.append(legend)
     if added_pkg:
         for (n, v, gid) in sorted(set(pinned)):
             if f"{n}@{v}" in pkg_entries:
-                summary.append(f"- `{n}@{v}` ([{gid}](https://github.com/advisories/{gid}))")
+                icon = _STATUS_ICON.get(statuses.get(n, "unknown"), "?")
+                summary.append(f"- {icon} `{n}@{v}` ([{gid}](https://github.com/advisories/{gid}))")
 
     # 2) all-versions advisories → iocs/blocked-package-names.txt
     block_entries = sorted({n for (n, _) in blocked})
@@ -193,15 +266,22 @@ def main() -> int:
     )
     summary.append("")
     summary.append(f"## blocked-package-names.txt — +{added_block} (out of {len(blocked)} all-versions entries)")
+    summary.append(legend)
     if added_block:
-        # show up to 20 in the report so reviewers see a sample
+        # Status summary line first, then full per-entry list.
+        from collections import Counter
+        counts = Counter(statuses.get(n, "unknown") for n in block_entries)
+        summary.append(
+            "  status breakdown: "
+            + ", ".join(f"{_STATUS_ICON[k]} {k} {v}" for k, v in counts.most_common())
+        )
         per_name_ids = {}
         for (n, gid) in blocked:
             per_name_ids.setdefault(n, gid)
-        for n in block_entries[:20]:
-            summary.append(f"- `{n}` ([{per_name_ids.get(n, '')}](https://github.com/advisories/{per_name_ids.get(n, '')}))")
-        if added_block > 20:
-            summary.append(f"- _… and {added_block - 20} more (see diff)_")
+        for n in block_entries:
+            gid = per_name_ids.get(n, "")
+            icon = _STATUS_ICON.get(statuses.get(n, "unknown"), "?")
+            summary.append(f"- {icon} `{n}` ([{gid}](https://github.com/advisories/{gid}))")
 
     summary.append("")
     summary.append("## persistence-paths.txt — +0 (no scraper wired yet)")
