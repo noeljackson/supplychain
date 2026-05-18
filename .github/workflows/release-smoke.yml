@@ -1,0 +1,84 @@
+name: release-smoke
+
+# Runs after every successful tagged release: taps the homebrew formula on a
+# fresh macOS runner, installs supplychain via `brew install`, and exercises
+# `version`, `doctor`, and a small `scan` against a clean fixture. Catches
+# release-pipeline regressions before users see them.
+
+on:
+  workflow_run:
+    workflows: [release]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to smoke-test (e.g. v0.1.3). Defaults to the latest release.'
+        required: false
+
+permissions:
+  contents: read
+
+jobs:
+  brew-mac:
+    # Fire on:
+    #   - workflow_dispatch (manual re-run), OR
+    #   - workflow_run when the prior `release` workflow succeeded AND ran on a tag (v*)
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       startsWith(github.event.workflow_run.head_branch, 'v'))
+    runs-on: macos-latest
+    steps:
+      - name: Resolve target tag
+        id: tag
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ -n "${{ inputs.tag }}" ]; then
+            echo "tag=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"
+          elif [ -n "${{ github.event.workflow_run.head_branch }}" ]; then
+            echo "tag=${{ github.event.workflow_run.head_branch }}" >> "$GITHUB_OUTPUT"
+          else
+            TAG=$(gh release view --repo ${{ github.repository }} --json tagName --jq .tagName)
+            echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          fi
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: Brew install via tap
+        run: |
+          brew tap noeljackson/tap
+          brew install supplychain
+
+      - name: supplychain version (must match the released tag)
+        run: |
+          OUT=$(supplychain version)
+          echo "$OUT"
+          EXPECT="${{ steps.tag.outputs.tag }}"
+          echo "$OUT" | grep -F "$EXPECT" || {
+            echo "::error::version output '$OUT' does not contain expected tag '$EXPECT'"
+            exit 1
+          }
+
+      - name: supplychain doctor (sanity check)
+        run: supplychain doctor
+
+      - name: scan a clean fixture (no findings expected)
+        run: |
+          mkdir clean-fixture
+          cat > clean-fixture/package.json <<'JSON'
+          { "name": "smoke", "version": "1.0.0",
+            "dependencies": { "lodash": "^4.17.21" } }
+          JSON
+          supplychain --no-update scan clean-fixture
+
+      - name: scan a malicious fixture (must exit 1)
+        run: |
+          mkdir dirty-fixture
+          cat > dirty-fixture/package.json <<'JSON'
+          { "name": "smoke-dirty", "version": "1.0.0",
+            "dependencies": { "@tanstack/router-utils": "^1.161.0" } }
+          JSON
+          if supplychain --no-update scan dirty-fixture; then
+            echo "::error::expected exit 1 on known-bad fixture, got 0"
+            exit 1
+          fi
+          echo "ok — malicious fixture correctly flagged"
