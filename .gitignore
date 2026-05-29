@@ -16,6 +16,7 @@ go.work.sum
 # Runtime state — these only exist under $XDG_DATA_HOME at runtime, but
 # guard against accidental check-in if a user runs the tool from the repo.
 .ioc_last_update
+.infisical.json
 
 # Editor / OS cruft
 .idea/

@@ -38,11 +38,13 @@ func cmdScanAll(g *Globals, args []string) int {
 		return 1
 	}
 
-	anyHits := false
+	var summary scanAllSummary
+	anyFailures := false
 	for _, repo := range repos {
-		if !g.Quiet {
+		if !g.Quiet && !g.JSON {
 			fmt.Println("==>", repo)
 		}
+		summary.Scanned++
 		findings, err := scan.Run(scan.Options{
 			Target:            repo,
 			OpenIOC:           g.OpenIOC,
@@ -57,25 +59,66 @@ func cmdScanAll(g *Globals, args []string) int {
 		})
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "warn:", repo+":", err)
+			summary.Errors++
 			continue
 		}
+		hasSupplyChain := findings.HasSupplyChainHits()
+		hasAdvisory := findings.HasAdvisoryHits()
+		switch {
+		case hasSupplyChain:
+			summary.SupplyChainRepos = append(summary.SupplyChainRepos, repo)
+		case hasAdvisory:
+			summary.AdvisoryOnlyRepos = append(summary.AdvisoryOnlyRepos, repo)
+		default:
+			summary.Clean++
+		}
 		if g.JSON {
-			_ = report.JSON(os.Stdout, findings)
+			_ = report.JSON(os.Stdout, findings, report.Options{FailOnAdvisory: g.FailOnAdvisory})
 		} else {
 			_ = report.Human(os.Stdout, findings, report.Options{
-				Quiet:       g.Quiet,
-				ShowScripts: g.Scripts,
-				ScriptsOnly: g.ScriptsOnly,
+				Quiet:          g.Quiet,
+				ShowScripts:    g.Scripts,
+				ScriptsOnly:    g.ScriptsOnly,
+				FailOnAdvisory: g.FailOnAdvisory,
 			})
 		}
-		if findings.HasHits() {
-			anyHits = true
+		if hasSupplyChain || (g.FailOnAdvisory && hasAdvisory) {
+			anyFailures = true
 		}
 	}
-	if anyHits {
+	if !g.JSON && !g.Quiet {
+		renderScanAllSummary(os.Stdout, summary)
+	}
+	if anyFailures {
 		return 1
 	}
 	return 0
+}
+
+type scanAllSummary struct {
+	Scanned           int
+	Clean             int
+	Errors            int
+	SupplyChainRepos  []string
+	AdvisoryOnlyRepos []string
+}
+
+func renderScanAllSummary(w *os.File, s scanAllSummary) {
+	fmt.Fprintln(w)
+	fmt.Fprintln(w, "Summary:")
+	fmt.Fprintf(w, "  repos scanned:              %d\n", s.Scanned)
+	fmt.Fprintf(w, "  supply-chain indicators:    %d\n", len(s.SupplyChainRepos))
+	fmt.Fprintf(w, "  advisory/audit only:        %d\n", len(s.AdvisoryOnlyRepos))
+	fmt.Fprintf(w, "  clean:                      %d\n", s.Clean)
+	if s.Errors > 0 {
+		fmt.Fprintf(w, "  scan errors:                 %d\n", s.Errors)
+	}
+	if len(s.SupplyChainRepos) > 0 {
+		fmt.Fprintln(w, "  supply-chain repos:")
+		for _, repo := range s.SupplyChainRepos {
+			fmt.Fprintf(w, "    %s\n", repo)
+		}
+	}
 }
 
 func findGitRepos(root string) ([]string, error) {
