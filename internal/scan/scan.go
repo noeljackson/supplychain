@@ -73,20 +73,30 @@ type Findings struct {
 	OSVAvailable bool `json:"osv_available"`
 }
 
-// HasHits returns true for anything that should be treated as a finding —
-// notably NOT Scripts or Freshness (informational only). Maintainer changes
-// DO count: a mid-stream maintainer-set change is the canonical leading
-// indicator of an account-takeover supply-chain attack.
-func (f Findings) HasHits() bool {
+// HasSupplyChainHits returns true for indicators that point at dependency
+// compromise, tampering, persistence, typosquatting, or maintainer takeover.
+// It deliberately excludes OSV vulnerability advisories and manifest/lockfile
+// drift: those are important audit signals, but they are not compromise IOCs.
+func (f Findings) HasSupplyChainHits() bool {
 	return len(f.Manifest) > 0 ||
 		len(f.Lockfile) > 0 ||
-		len(f.OSV) > 0 ||
 		len(f.Payloads) > 0 ||
 		len(f.Persistence) > 0 ||
 		len(f.Typosquat) > 0 ||
 		len(f.Signatures) > 0 ||
-		len(f.Maintainers) > 0 ||
+		len(f.Maintainers) > 0
+}
+
+// HasAdvisoryHits returns true for non-IOC dependency/audit findings.
+func (f Findings) HasAdvisoryHits() bool {
+	return len(f.OSV) > 0 ||
 		len(f.Drift) > 0
+}
+
+// HasHits returns true for anything non-informational. Scripts and freshness
+// remain informational only.
+func (f Findings) HasHits() bool {
+	return f.HasSupplyChainHits() || f.HasAdvisoryHits()
 }
 
 // Run executes the scan.

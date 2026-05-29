@@ -33,11 +33,12 @@ func init() {
 
 // Globals holds the parsed global flags + dependencies passed down to commands.
 type Globals struct {
-	JSON        bool
-	Quiet       bool
-	NoUpdate    bool
-	Scripts     bool // --scripts: include install-script section in human output
-	ScriptsOnly bool // --scripts-only: ONLY show install-script section
+	JSON           bool
+	Quiet          bool
+	NoUpdate       bool
+	FailOnAdvisory bool
+	Scripts        bool // --scripts: include install-script section in human output
+	ScriptsOnly    bool // --scripts-only: ONLY show install-script section
 
 	// FreshnessDays > 0 enables the freshness check with that window. Set via
 	// --freshness (=7) or --freshness-days=N.
@@ -123,6 +124,8 @@ func parseGlobalFlags(g *Globals, args []string) []string {
 			g.Quiet = true
 		case a == "--no-update":
 			g.NoUpdate = true
+		case a == "--fail-on-advisory":
+			g.FailOnAdvisory = true
 		case a == "--scripts":
 			g.Scripts = true
 		case a == "--scripts-only":
@@ -200,6 +203,9 @@ flags (may appear anywhere):
   --json                machine-readable output
   --quiet, -q           silent if clean (useful in hooks)
   --no-update           skip auto-update for this run
+  --fail-on-advisory    return nonzero for OSV advisories and lockfile drift
+                        too. By default, only IOC/tamper/maintainer/squatting
+                        supply-chain indicators fail the command.
   --scripts             include install/preinstall/postinstall script section
   --scripts-only        show only the install-script section (for audits)
   --freshness           flag installed deps published in the last 7 days

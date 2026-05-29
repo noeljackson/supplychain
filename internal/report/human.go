@@ -11,9 +11,10 @@ import (
 
 // Options controls human-output rendering.
 type Options struct {
-	Quiet       bool
-	ShowScripts bool // include the install-script section
-	ScriptsOnly bool // suppress everything except the install-script section
+	Quiet          bool
+	ShowScripts    bool // include the install-script section
+	ScriptsOnly    bool // suppress everything except the install-script section
+	FailOnAdvisory bool // treat OSV/drift advisory findings as exit-code failures
 }
 
 // Human writes a human-readable report. Returns 1 if there are hits, 0 if clean.
@@ -24,7 +25,9 @@ func Human(w io.Writer, f scan.Findings, opts Options) int {
 		return 0
 	}
 
-	if !f.HasHits() {
+	hasSupplyChain := f.HasSupplyChainHits()
+	hasAdvisory := f.HasAdvisoryHits()
+	if !hasSupplyChain && !hasAdvisory {
 		if !opts.Quiet {
 			fmt.Fprintf(w, "ok  clean: %s\n", f.Target)
 			if !f.OSVAvailable {
@@ -42,16 +45,12 @@ func Human(w io.Writer, f scan.Findings, opts Options) int {
 		return 0
 	}
 
-	fmt.Fprintf(w, "err supply-chain findings in %s\n", f.Target)
-
-	if len(f.OSV) > 0 {
-		fmt.Fprintln(w)
-		fmt.Fprintln(w, "OSV advisories:")
-		for _, v := range f.OSV {
-			fmt.Fprintf(w, "  %s@%s  %s  (%s)\n", v.Name, v.Version,
-				strings.Join(v.IDs, ", "), v.SourcePath)
-		}
+	if hasSupplyChain {
+		fmt.Fprintf(w, "err supply-chain indicators in %s\n", f.Target)
+	} else {
+		fmt.Fprintf(w, "warn dependency advisory/audit findings in %s\n", f.Target)
 	}
+
 	if len(f.Manifest) > 0 {
 		fmt.Fprintln(w)
 		fmt.Fprintln(w, "IOC matches in package.json manifests:")
@@ -117,9 +116,17 @@ func Human(w io.Writer, f scan.Findings, opts Options) int {
 			fmt.Fprintf(w, "    current:  %s\n", strings.Join(h.Current, ", "))
 		}
 	}
+	if len(f.OSV) > 0 {
+		fmt.Fprintln(w)
+		fmt.Fprintln(w, "Dependency vulnerability advisories (OSV; non-IOC):")
+		for _, v := range f.OSV {
+			fmt.Fprintf(w, "  %s@%s  %s  (%s)\n", v.Name, v.Version,
+				strings.Join(v.IDs, ", "), v.SourcePath)
+		}
+	}
 	if len(f.Drift) > 0 {
 		fmt.Fprintln(w)
-		fmt.Fprintln(w, "Manifest/lockfile drift:")
+		fmt.Fprintln(w, "Manifest/lockfile drift (audit warning):")
 		for _, h := range f.Drift {
 			switch h.Reason {
 			case "missing-from-lockfile":
@@ -139,7 +146,10 @@ func Human(w io.Writer, f scan.Findings, opts Options) int {
 	} else if len(f.Scripts) > 0 {
 		fmt.Fprintf(w, "\nnote: %d installed deps declare install/postinstall scripts. Run with --scripts to list.\n", len(f.Scripts))
 	}
-	return 1
+	if hasSupplyChain || (opts.FailOnAdvisory && hasAdvisory) {
+		return 1
+	}
+	return 0
 }
 
 func renderFreshness(w io.Writer, f scan.Findings) {
