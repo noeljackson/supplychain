@@ -9,9 +9,9 @@
 //   - "missing-from-lockfile": a dep is declared in the manifest but
 //     absent from the lockfile entirely. The lockfile is stale.
 //
-// v1 supports package-lock.json only. Other lockfile formats
-// (pnpm/yarn/bun) are detected but skipped with a note — extending the
-// parser map is the obvious follow-up.
+// Supports package-lock.json and bun.lock. pnpm-lock.yaml / yarn.lock are
+// recognised but skipped (no parser yet) rather than flagged wholesale —
+// extending the parser map is the obvious follow-up.
 package drift
 
 import (
@@ -142,24 +142,137 @@ func readManifest(path string) (packageJSON, error) {
 }
 
 // pickLockfile returns the (path, top-level name->version map) for the first
-// supported lockfile found alongside the manifest, or ("", nil) if none.
-// v1 supports package-lock.json only.
+// parseable lockfile found alongside the manifest, or ("", nil) if none.
+// Supports package-lock.json and bun.lock. Formats we can't parse yet
+// (pnpm-lock.yaml, yarn.lock) are skipped — returning a nil map for them would
+// make every declared dep look "missing-from-lockfile", which is a false
+// positive, so we fall through and report no drift for those projects instead.
 func pickLockfile(dir string) (string, map[string]string) {
-	candidates := []string{"package-lock.json", "pnpm-lock.yaml", "yarn.lock", "bun.lock"}
+	// bun.lock is checked before pnpm/yarn so a project carrying several
+	// lockfiles still gets parsed drift rather than being skipped.
+	candidates := []string{"package-lock.json", "bun.lock", "pnpm-lock.yaml", "yarn.lock"}
 	for _, name := range candidates {
 		p := filepath.Join(dir, name)
 		if _, err := os.Stat(p); err != nil {
 			continue
 		}
-		if name == "package-lock.json" {
+		switch name {
+		case "package-lock.json":
 			return p, parseNpmLock(p)
+		case "bun.lock":
+			return p, parseBunLock(p)
+		default:
+			// pnpm-lock.yaml / yarn.lock: no parser yet — skip rather than
+			// emit false "missing" hits. (TODO: real parsers.)
+			continue
 		}
-		// Other formats: defer parsing. We still record the lockfile name so
-		// a future caller could decide to skip drift for that project rather
-		// than treating it as "no lockfile at all".
-		return p, nil
 	}
 	return "", nil
+}
+
+// parseBunLock returns the name → resolved version map from a bun.lock (the
+// text/JSON format, lockfileVersion 1). Each entry in the "packages" object is
+// an array whose first element is the "name@version" descriptor, e.g.
+//
+//	"packages": {
+//	  "turbo":            ["turbo@2.9.16", "", { ... }, "sha512-..."],
+//	  "@astrojs/compiler": ["@astrojs/compiler@2.13.1", "", {}, "sha512-..."]
+//	}
+//
+// We index by name; when a package is present at multiple versions the last
+// one wins, which is sufficient for presence checks and the common single-
+// version case.
+func parseBunLock(path string) map[string]string {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return nil
+	}
+	// bun.lock is JSONC: it carries trailing commas (",}" / ",]") that Go's
+	// encoding/json rejects, so normalise before decoding.
+	raw = stripJSONTrailingCommas(raw)
+	var doc struct {
+		Packages map[string]json.RawMessage `json:"packages"`
+	}
+	if err := json.Unmarshal(raw, &doc); err != nil {
+		return nil
+	}
+	out := make(map[string]string, len(doc.Packages))
+	for key, rawEntry := range doc.Packages {
+		var arr []json.RawMessage
+		if err := json.Unmarshal(rawEntry, &arr); err != nil || len(arr) == 0 {
+			continue
+		}
+		var spec string
+		if err := json.Unmarshal(arr[0], &spec); err != nil {
+			continue
+		}
+		name, version, ok := splitBunSpec(spec)
+		if !ok {
+			continue
+		}
+		// Only the hoisted/top-level entry is keyed by the bare package name;
+		// workspace- or nesting-specific resolutions use path-prefixed keys
+		// ("pkg/dep", "ws/@scope/dep"). Record only the hoisted version, since
+		// that's what a top-level declared dep actually resolves to. Without
+		// this, a dep present at several versions would resolve by random map
+		// order and spuriously look out-of-range.
+		if key == name {
+			out[name] = version
+		}
+	}
+	return out
+}
+
+// stripJSONTrailingCommas removes structural trailing commas (the "," in ",}"
+// and ",]") from a JSONC byte stream such as bun.lock. It is string-aware —
+// commas inside quoted strings are left untouched — so it won't corrupt
+// version ranges or integrity hashes.
+func stripJSONTrailingCommas(b []byte) []byte {
+	out := make([]byte, 0, len(b))
+	inStr, esc := false, false
+	for i := 0; i < len(b); i++ {
+		c := b[i]
+		if inStr {
+			out = append(out, c)
+			switch {
+			case esc:
+				esc = false
+			case c == '\\':
+				esc = true
+			case c == '"':
+				inStr = false
+			}
+			continue
+		}
+		if c == '"' {
+			inStr = true
+			out = append(out, c)
+			continue
+		}
+		if c == ',' {
+			j := i + 1
+			for j < len(b) && (b[j] == ' ' || b[j] == '\t' || b[j] == '\n' || b[j] == '\r') {
+				j++
+			}
+			if j < len(b) && (b[j] == '}' || b[j] == ']') {
+				continue // drop the trailing comma
+			}
+		}
+		out = append(out, c)
+	}
+	return out
+}
+
+// splitBunSpec splits a bun "name@version" descriptor into its parts, keeping
+// the leading "@" of a scoped name intact (e.g. "@scope/name@1.2.3" ->
+// "@scope/name", "1.2.3"). The split is on the LAST "@" so the scope's "@"
+// isn't mistaken for the version separator.
+func splitBunSpec(spec string) (string, string, bool) {
+	at := strings.LastIndex(spec, "@")
+	if at <= 0 || at == len(spec)-1 {
+		return "", "", false // no version, or a bare scoped name
+	}
+	return spec[:at], spec[at+1:], true
 }
 
 // parseNpmLock returns the top-level dep name → resolved version map from
