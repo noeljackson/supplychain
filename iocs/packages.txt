@@ -72,3 +72,18 @@ safe-action@0.8.4
 @uipath/vertical-solutions-tool@1.0.1
 @uipath/vss@0.1.6
 @uipath/widget.sdk@1.2.3
+
+# GHSA MALWARE advisories — version pins (npm, last 14d) (auto-added 2026-06-14)
+@common-stack/generate-plugin@10.0.1-alpha.0
+@common-stack/generate-plugin@9.0.2-alpha.21
+@common-stack/generate-plugin@9.0.2-alpha.22
+@common-stack/generate-plugin@9.0.2-alpha.23
+@common-stack/generate-plugin@9.0.2-alpha.24
+@common-stack/generate-plugin@9.0.4-alpha.0
+@common-stack/generate-plugin@9.0.4-alpha.1
+@common-stack/generate-plugin@9.0.5-alpha.0
+@common-stack/generate-plugin@9.0.5-alpha.1
+@common-stack/generate-plugin@9.0.5-alpha.2
+@common-stack/generate-plugin@9.0.5-alpha.3
+@common-stack/generate-plugin@9.0.5-alpha.4
+@common-stack/generate-plugin@9.0.5-alpha.5
