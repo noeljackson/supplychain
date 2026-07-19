@@ -28,8 +28,10 @@ func cmdCI(g *Globals, args []string) int {
 	g.FailOnAdvisory = *policy == "strict"
 	scanExit := cmdScan(g, []string{target})
 	workflowsExit := 0
+	secretsExit := 0
 	if *policy == "strict" {
 		workflowsExit = cmdWorkflows(g, []string{target})
+		secretsExit = cmdSecrets(g, []string{target})
 	}
 
 	abs, err := filepath.Abs(target)
@@ -38,7 +40,7 @@ func cmdCI(g *Globals, args []string) int {
 		return 1
 	}
 	if _, err := os.Stat(filepath.Join(abs, "bun.lock")); err != nil {
-		if scanExit != 0 || workflowsExit != 0 {
+		if scanExit != 0 || workflowsExit != 0 || secretsExit != 0 {
 			return 1
 		}
 		return 0
@@ -50,7 +52,7 @@ func cmdCI(g *Globals, args []string) int {
 	}
 	verifyArgs = append(verifyArgs, abs)
 	verifyExit := cmdVerifyBun(g, verifyArgs)
-	if scanExit != 0 || workflowsExit != 0 || verifyExit != 0 {
+	if scanExit != 0 || workflowsExit != 0 || secretsExit != 0 || verifyExit != 0 {
 		return 1
 	}
 	return 0

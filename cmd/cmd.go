@@ -97,6 +97,8 @@ func Run(defaultIOCs embed.FS) int {
 		return cmdImage(g, args)
 	case "workflows":
 		return cmdWorkflows(g, args)
+	case "secrets":
+		return cmdSecrets(g, args)
 	case "verify-bun":
 		return cmdVerifyBun(g, args)
 	case "init":
@@ -201,6 +203,7 @@ commands:
   ci [path]             fail-closed CI scan plus strict Bun verification
   image IMAGE           generate an SPDX SBOM with Syft and scan it with Grype
   workflows [path]      audit GitHub Actions definitions with zizmor
+  secrets [path]        scan checked-out repository files with Gitleaks
   verify-bun [path]     verify bun.lock integrity, registry signatures, age,
                         maintainers, and reviewed baseline
   init github           install a pinned GitHub Actions caller workflow
