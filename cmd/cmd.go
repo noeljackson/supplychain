@@ -93,6 +93,10 @@ func Run(defaultIOCs embed.FS) int {
 		return cmdScan(g, args)
 	case "ci":
 		return cmdCI(g, args)
+	case "image":
+		return cmdImage(g, args)
+	case "workflows":
+		return cmdWorkflows(g, args)
 	case "verify-bun":
 		return cmdVerifyBun(g, args)
 	case "init":
@@ -195,6 +199,8 @@ usage: supplychain <command> [args] [flags]
 commands:
   scan [path]           scan a path (default: cwd) for known-bad deps + IOCs
   ci [path]             fail-closed CI scan plus strict Bun verification
+  image IMAGE           generate an SPDX SBOM with Syft and scan it with Grype
+  workflows [path]      audit GitHub Actions definitions with zizmor
   verify-bun [path]     verify bun.lock integrity, registry signatures, age,
                         maintainers, and reviewed baseline
   init github           install a pinned GitHub Actions caller workflow

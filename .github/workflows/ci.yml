@@ -8,13 +8,23 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
           persist-credentials: false
       - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
-        with: { go-version: '1.22' }
+        with: { go-version: '1.26.5' }
       - run: go vet ./...
       - run: go build -ldflags "-s -w" -o supplychain ./
       - run: go test ./... -race -count=1
-      - run: go run . ci --policy=strict .
+      - name: Build clean fixture image
+        run: docker build --tag supplychain-fixture:ci testdata/image
+      - name: Exercise the composite action and image scanner
+        uses: ./
+        with:
+          path: .
+          policy: strict
+          image: supplychain-fixture:ci
+          fail-on-severity: high

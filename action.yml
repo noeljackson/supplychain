@@ -19,6 +19,23 @@ inputs:
     description: Reviewed Bun baseline path relative to the repository
     required: false
     default: .supplychain/bun-baseline.json
+  image:
+    description: Optional local or registry OCI image to inventory and scan
+    required: false
+    default: ""
+  fail-on-severity:
+    description: Minimum Grype severity that fails an image scan
+    required: false
+    default: high
+  only-fixed:
+    description: Only fail image vulnerabilities for which a fix exists
+    required: false
+    default: "false"
+
+outputs:
+  sbom:
+    description: Path to the generated SPDX JSON SBOM when image is set
+    value: ${{ steps.image.outputs.sbom }}
 
 runs:
   using: composite
@@ -39,6 +56,18 @@ runs:
         cd "$GITHUB_ACTION_PATH"
         go mod verify
         go build -trimpath -ldflags '-s -w' -o "$RUNNER_TEMP/supplychain-action" ./
+    - name: Install pinned advisory tools
+      shell: bash
+      env:
+        SUPPLYCHAIN_BIN_DIR: ${{ runner.temp }}/supplychain-bin
+        INPUT_IMAGE: ${{ inputs.image }}
+      run: |
+        set -euo pipefail
+        args=()
+        if [ -n "$INPUT_IMAGE" ]; then
+          args+=(--image-tools)
+        fi
+        "${{ github.action_path }}/scripts/install-ci-tools" "${args[@]}"
     - name: Scan repository without executing it
       shell: bash
       env:
@@ -47,6 +76,7 @@ runs:
         INPUT_POLICY: ${{ inputs.policy }}
         INPUT_MINIMUM_AGE: ${{ inputs.minimum-release-age-days }}
         INPUT_BASELINE: ${{ inputs.baseline }}
+        SUPPLYCHAIN_BIN_DIR: ${{ runner.temp }}/supplychain-bin
       run: |
         set -euo pipefail
         "$RUNNER_TEMP/supplychain-action" ci \
@@ -54,6 +84,29 @@ runs:
           --minimum-age-days="$INPUT_MINIMUM_AGE" \
           --baseline="$INPUT_BASELINE" \
           "$INPUT_PATH"
+    - name: Inventory and scan OCI image
+      id: image
+      if: inputs.image != ''
+      shell: bash
+      env:
+        INPUT_IMAGE: ${{ inputs.image }}
+        INPUT_FAIL_ON: ${{ inputs.fail-on-severity }}
+        INPUT_ONLY_FIXED: ${{ inputs.only-fixed }}
+        SUPPLYCHAIN_BIN_DIR: ${{ runner.temp }}/supplychain-bin
+      run: |
+        set -euo pipefail
+        case "$INPUT_ONLY_FIXED" in
+          true) only_fixed=(--only-fixed) ;;
+          false) only_fixed=() ;;
+          *) echo "only-fixed must be true or false" >&2; exit 2 ;;
+        esac
+        sbom="$RUNNER_TEMP/supplychain.spdx.json"
+        "$RUNNER_TEMP/supplychain-action" image \
+          --sbom="$sbom" \
+          --fail-on="$INPUT_FAIL_ON" \
+          "${only_fixed[@]}" \
+          "$INPUT_IMAGE"
+        echo "sbom=$sbom" >> "$GITHUB_OUTPUT"
 
 branding:
   icon: shield

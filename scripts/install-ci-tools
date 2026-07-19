@@ -1,0 +1,93 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# CI bootstrap for tools intentionally kept outside the supplychain Go module.
+# Every release is older than the project cooldown at the time of pinning. The
+# Anchore checksum manifests were verified with their Sigstore certificates;
+# OSV's binary digest was checked against its SLSA release materials.
+
+OSV_VERSION=2.4.0
+SYFT_VERSION=1.45.1
+GRYPE_VERSION=0.114.0
+ZIZMOR_VERSION=1.25.2
+
+install_image_tools=false
+if [[ "${1:-}" == "--image-tools" ]]; then
+  install_image_tools=true
+elif [[ $# -ne 0 ]]; then
+  echo "usage: install-ci-tools [--image-tools]" >&2
+  exit 2
+fi
+
+case "$(uname -s)" in
+  Linux) platform=linux ;;
+  *) echo "install-ci-tools: unsupported operating system: $(uname -s)" >&2; exit 1 ;;
+esac
+case "$(uname -m)" in
+  x86_64|amd64)
+    arch=amd64
+    osv_sha=15314940c10d26af9c6649f150b8a47c1262e8fc7e17b1d1029b0e479e8ed8a0
+    syft_sha=20c84195e24927f50a3b2269946be51f4c4abc9d2f145fee7388b4199149f716
+    grype_sha=edda0968d8827daab01d32b3cd7de192ae0915005e7bbfcfef9e68e79bc43343
+    zizmor_sha=aa1facd105f0d83fe5c55b1adcd9d7417de5d83aa27471f91dc0b66cf3803577
+    ;;
+  aarch64|arm64)
+    arch=arm64
+    osv_sha=44e580752910f0ff36ec99aff59af20f65df1e859aa31e5605a8f0d055b496e9
+    syft_sha=7df9f45cba1f6358ecfc7fac349d43b4605137001f9646b41267abe15a7c6cd7
+    grype_sha=553e4c36d9d61349830ba6034d43b8700a7f10576d3e2f4981c0fd2b96086465
+    zizmor_sha=4b4b9491112c2a09b318101c0d3349b73af1c4f532e097dd6d0164f2abda760d
+    ;;
+  *) echo "install-ci-tools: unsupported architecture: $(uname -m)" >&2; exit 1 ;;
+esac
+
+bin_dir=${SUPPLYCHAIN_BIN_DIR:-"${HOME}/.local/bin"}
+mkdir -p "$bin_dir"
+work_dir=$(mktemp -d)
+trap 'rm -rf "$work_dir"' EXIT
+
+download() {
+  local url=$1 destination=$2 expected=$3
+  curl --proto '=https' --tlsv1.2 --fail --location --silent --show-error \
+    --retry 3 --retry-all-errors --output "$destination" "$url"
+  printf '%s  %s\n' "$expected" "$destination" | sha256sum --check --status -
+}
+
+osv_asset="osv-scanner_${platform}_${arch}"
+download \
+  "https://github.com/google/osv-scanner/releases/download/v${OSV_VERSION}/${osv_asset}" \
+  "$work_dir/osv-scanner" "$osv_sha"
+install -m 0755 "$work_dir/osv-scanner" "$bin_dir/osv-scanner"
+
+case "$arch" in
+  amd64) zizmor_arch=x86_64 ;;
+  arm64) zizmor_arch=aarch64 ;;
+esac
+zizmor_archive="zizmor-${zizmor_arch}-unknown-linux-gnu.tar.gz"
+download \
+  "https://github.com/zizmorcore/zizmor/releases/download/v${ZIZMOR_VERSION}/${zizmor_archive}" \
+  "$work_dir/$zizmor_archive" "$zizmor_sha"
+tar -xzf "$work_dir/$zizmor_archive" -C "$work_dir" zizmor
+install -m 0755 "$work_dir/zizmor" "$bin_dir/zizmor"
+
+install_archive() {
+  local tool=$1 version=$2 expected=$3
+  local archive="${tool}_${version}_${platform}_${arch}.tar.gz"
+  download "https://github.com/anchore/${tool}/releases/download/v${version}/${archive}" \
+    "$work_dir/$archive" "$expected"
+  tar -xzf "$work_dir/$archive" -C "$work_dir" "$tool"
+  install -m 0755 "$work_dir/$tool" "$bin_dir/$tool"
+  rm -f "$work_dir/$tool"
+}
+
+if [[ "$install_image_tools" == true ]]; then
+  install_archive syft "$SYFT_VERSION" "$syft_sha"
+  install_archive grype "$GRYPE_VERSION" "$grype_sha"
+fi
+
+"$bin_dir/osv-scanner" --version
+"$bin_dir/zizmor" --version
+if [[ "$install_image_tools" == true ]]; then
+  "$bin_dir/syft" version
+  "$bin_dir/grype" version
+fi

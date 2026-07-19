@@ -46,6 +46,29 @@ The root composite action is also available inside an existing job:
 - uses: noeljackson/supplychain@FULL_COMMIT_SHA
   with:
     policy: strict
+    image: app:test
+    fail-on-severity: high
+```
+
+Strict scans also run zizmor offline against GitHub Actions definitions,
+failing on medium-or-higher, medium-confidence findings and workflow schema
+errors without exposing a GitHub token to the analyzer.
+
+When `image` is set, the action creates an SPDX JSON SBOM with Syft and scans
+that exact document with Grype. The `sbom` action output is suitable for later
+artifact upload or attestation. Syft, Grype, and OSV Scanner are installed from
+cooldown-aged, immutable releases whose expected SHA-256 hashes live in this
+repository. Strict source scans fail if OSV Scanner is absent or fails; image
+scans require a fresh, hash-valid Grype database and a successful update check.
+
+The reusable workflow is source-only because reusable jobs cannot see an image
+built in a caller job. Use the composite action in the same job, after
+`docker build`, when image scanning is required.
+
+Local image scan with already-installed Syft and Grype:
+
+```bash
+supplychain image --sbom=app.spdx.json --fail-on=high app:test
 ```
 
 ## Bun verification
@@ -71,5 +94,5 @@ supplychain ci --policy=strict .
 ```
 
 Normal workstation scans may refresh public IOC data. CI always uses the IOC
-snapshot embedded in the pinned scanner source and does not download helper
-binaries.
+snapshot embedded in the pinned scanner source. The global action downloads
+only its pinned, hash-checked OSV/zizmor/Syft/Grype helper versions.

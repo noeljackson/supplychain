@@ -27,6 +27,10 @@ func cmdCI(g *Globals, args []string) int {
 	g.NoUpdate = true
 	g.FailOnAdvisory = *policy == "strict"
 	scanExit := cmdScan(g, []string{target})
+	workflowsExit := 0
+	if *policy == "strict" {
+		workflowsExit = cmdWorkflows(g, []string{target})
+	}
 
 	abs, err := filepath.Abs(target)
 	if err != nil {
@@ -34,7 +38,10 @@ func cmdCI(g *Globals, args []string) int {
 		return 1
 	}
 	if _, err := os.Stat(filepath.Join(abs, "bun.lock")); err != nil {
-		return scanExit
+		if scanExit != 0 || workflowsExit != 0 {
+			return 1
+		}
+		return 0
 	}
 	verifyArgs := []string{fmt.Sprintf("--minimum-age-days=%d", *minimumAge)}
 	baselinePath := filepath.Join(abs, *baseline)
@@ -43,7 +50,7 @@ func cmdCI(g *Globals, args []string) int {
 	}
 	verifyArgs = append(verifyArgs, abs)
 	verifyExit := cmdVerifyBun(g, verifyArgs)
-	if scanExit != 0 || verifyExit != 0 {
+	if scanExit != 0 || workflowsExit != 0 || verifyExit != 0 {
 		return 1
 	}
 	return 0

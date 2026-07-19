@@ -4,21 +4,22 @@ on:
   push:
     tags: ['v*']
 
-permissions:
-  contents: write
-  id-token: write
-  artifact-metadata: write
+permissions: {}
 
 jobs:
   goreleaser:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+      artifact-metadata: write
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
           fetch-depth: 0
           persist-credentials: false
       - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
-        with: { go-version: '1.22' }
+        with: { go-version: '1.26.5' }
       - run: go mod verify
       - uses: goreleaser/goreleaser-action@e435ccd777264be153ace6237001ef4d979d3a7a # v6
         with:
@@ -31,3 +32,22 @@ jobs:
         uses: actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a # v3
         with:
           subject-path: dist/*.tar.gz
+
+  smoke:
+    needs: goreleaser
+    runs-on: macos-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Brew install released version
+        run: |
+          brew tap noeljackson/tap
+          brew install supplychain
+      - name: Verify released version and health
+        env:
+          EXPECTED_TAG: ${{ github.ref_name }}
+        run: |
+          output=$(supplychain version)
+          printf '%s\n' "$output"
+          grep -F "$EXPECTED_TAG" <<<"$output"
+          supplychain doctor
