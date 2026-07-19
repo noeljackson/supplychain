@@ -20,7 +20,7 @@ inputs:
     required: false
     default: .supplychain/bun-baseline.json
   scan-source:
-    description: Run repository, dependency, OSV, Bun, and zizmor checks
+    description: Run repository, dependency, OSV, Bun, Gitleaks, and zizmor checks
     required: false
     default: "true"
   image:

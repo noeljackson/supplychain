@@ -4,9 +4,11 @@ set -euo pipefail
 # CI bootstrap for tools intentionally kept outside the supplychain Go module.
 # Every release is older than the project cooldown at the time of pinning. The
 # Anchore checksum manifests were verified with their Sigstore certificates;
-# OSV's binary digest was checked against its SLSA release materials.
+# OSV's binary digest was checked against its SLSA release materials, and the
+# Gitleaks hashes were checked against its published release checksum manifest.
 
 OSV_VERSION=2.4.0
+GITLEAKS_VERSION=8.30.1
 SYFT_VERSION=1.45.1
 GRYPE_VERSION=0.114.0
 ZIZMOR_VERSION=1.25.2
@@ -32,6 +34,7 @@ case "$(uname -m)" in
   x86_64|amd64)
     arch=amd64
     osv_sha=15314940c10d26af9c6649f150b8a47c1262e8fc7e17b1d1029b0e479e8ed8a0
+    gitleaks_sha=551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
     syft_sha=20c84195e24927f50a3b2269946be51f4c4abc9d2f145fee7388b4199149f716
     grype_sha=edda0968d8827daab01d32b3cd7de192ae0915005e7bbfcfef9e68e79bc43343
     zizmor_sha=aa1facd105f0d83fe5c55b1adcd9d7417de5d83aa27471f91dc0b66cf3803577
@@ -39,6 +42,7 @@ case "$(uname -m)" in
   aarch64|arm64)
     arch=arm64
     osv_sha=44e580752910f0ff36ec99aff59af20f65df1e859aa31e5605a8f0d055b496e9
+    gitleaks_sha=e4a487ee7ccd7d3a7f7ec08657610aa3606637dab924210b3aee62570fb4b080
     syft_sha=7df9f45cba1f6358ecfc7fac349d43b4605137001f9646b41267abe15a7c6cd7
     grype_sha=553e4c36d9d61349830ba6034d43b8700a7f10576d3e2f4981c0fd2b96086465
     zizmor_sha=4b4b9491112c2a09b318101c0d3349b73af1c4f532e097dd6d0164f2abda760d
@@ -75,6 +79,17 @@ if [[ "$install_source_tools" == true ]]; then
     "$work_dir/$zizmor_archive" "$zizmor_sha"
   tar -xzf "$work_dir/$zizmor_archive" -C "$work_dir" zizmor
   install -m 0755 "$work_dir/zizmor" "$bin_dir/zizmor"
+
+  case "$arch" in
+    amd64) gitleaks_arch=x64 ;;
+    arm64) gitleaks_arch=arm64 ;;
+  esac
+  gitleaks_archive="gitleaks_${GITLEAKS_VERSION}_${platform}_${gitleaks_arch}.tar.gz"
+  download \
+    "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/${gitleaks_archive}" \
+    "$work_dir/$gitleaks_archive" "$gitleaks_sha"
+  tar -xzf "$work_dir/$gitleaks_archive" -C "$work_dir" gitleaks
+  install -m 0755 "$work_dir/gitleaks" "$bin_dir/gitleaks"
 fi
 
 install_archive() {
@@ -94,6 +109,7 @@ fi
 
 if [[ "$install_source_tools" == true ]]; then
   "$bin_dir/osv-scanner" --version
+  "$bin_dir/gitleaks" version
   "$bin_dir/zizmor" --version
 fi
 if [[ "$install_image_tools" == true ]]; then
