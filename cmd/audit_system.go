@@ -40,8 +40,8 @@ func cmdAuditSystem(g *Globals, args []string) int {
 		enc := json.NewEncoder(os.Stdout)
 		enc.SetIndent("", "  ")
 		_ = enc.Encode(struct {
-			HasHits  bool            `json:"has_hits"`
-			Findings audit.Findings  `json:"findings"`
+			HasHits  bool           `json:"has_hits"`
+			Findings audit.Findings `json:"findings"`
 		}{findings.HasHits(), findings})
 		if findings.HasHits() {
 			return 1
@@ -93,7 +93,12 @@ func cmdAuditSystem(g *Globals, args []string) int {
 	return 1
 }
 
-func boolToInt(b bool) int { if b { return 1 } ; return 0 }
+func boolToInt(b bool) int {
+	if b {
+		return 1
+	}
+	return 0
+}
 
 func truncate(s string, n int) string {
 	if len(s) <= n {
@@ -102,4 +107,9 @@ func truncate(s string, n int) string {
 	return s[:n-3] + "..."
 }
 
-func min(a, b int) int { if a < b { return a } ; return b }
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}

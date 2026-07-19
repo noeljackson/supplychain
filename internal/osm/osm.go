@@ -24,9 +24,9 @@ import (
 )
 
 const (
-	BaseURL    = "https://api.opensourcemalware.com/functions/v1"
-	envToken   = "SUPPLYCHAIN_OSM_TOKEN"
-	UserAgent  = "supplychain/dev (+https://github.com/noeljackson/supplychain)"
+	BaseURL     = "https://api.opensourcemalware.com/functions/v1"
+	envToken    = "SUPPLYCHAIN_OSM_TOKEN"
+	UserAgent   = "supplychain/dev (+https://github.com/noeljackson/supplychain)"
 	httpTimeout = 15 * time.Second
 )
 
@@ -35,14 +35,14 @@ func Token() string { return os.Getenv(envToken) }
 
 // Threat is the relevant subset of one entry in the query-latest response.
 type Threat struct {
-	ID          string `json:"id"`
-	PackageName string `json:"package_name"`
-	Description string `json:"threat_description"`
-	Severity    string `json:"severity_level"`
-	Registry    string `json:"registry"`
-	Publisher   string `json:"publisher"`
-	VersionInfo string `json:"version_info"`
-	CreatedAt   string `json:"created_at"`
+	ID          string   `json:"id"`
+	PackageName string   `json:"package_name"`
+	Description string   `json:"threat_description"`
+	Severity    string   `json:"severity_level"`
+	Registry    string   `json:"registry"`
+	Publisher   string   `json:"publisher"`
+	VersionInfo string   `json:"version_info"`
+	CreatedAt   string   `json:"created_at"`
 	Tags        []string `json:"tags"`
 }
 
@@ -56,11 +56,11 @@ type QueryLatestResponse struct {
 // CachedEntry is one IOC sourced from OSM that we've decided to apply during
 // scans. The Package + Version pair is what gets matched.
 type CachedEntry struct {
-	Name        string `json:"name"`
-	Version     string `json:"version"`
-	ThreatID    string `json:"threat_id"`
-	Severity    string `json:"severity"`
-	Description string `json:"description"`
+	Name        string   `json:"name"`
+	Version     string   `json:"version"`
+	ThreatID    string   `json:"threat_id"`
+	Severity    string   `json:"severity"`
+	Description string   `json:"description"`
 	Tags        []string `json:"tags,omitempty"`
 }
 

@@ -1,0 +1,60 @@
+name: Supplychain Scan
+description: Fail-closed dependency and repository supply-chain scan without executing project code
+author: noeljackson
+
+inputs:
+  path:
+    description: Repository path to scan
+    required: false
+    default: .
+  policy:
+    description: auto or strict
+    required: false
+    default: strict
+  minimum-release-age-days:
+    description: Minimum npm package publication age for Bun lockfiles
+    required: false
+    default: "7"
+  baseline:
+    description: Reviewed Bun baseline path relative to the repository
+    required: false
+    default: .supplychain/bun-baseline.json
+
+runs:
+  using: composite
+  steps:
+    - name: Set up pinned Go toolchain
+      uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+      with:
+        go-version-file: ${{ github.action_path }}/go.mod
+        cache: false
+    - name: Build pinned scanner source
+      shell: bash
+      env:
+        GOTOOLCHAIN: local
+        GOPROXY: https://proxy.golang.org
+        GOSUMDB: sum.golang.org
+      run: |
+        set -euo pipefail
+        cd "$GITHUB_ACTION_PATH"
+        go mod verify
+        go build -trimpath -ldflags '-s -w' -o "$RUNNER_TEMP/supplychain-action" ./
+    - name: Scan repository without executing it
+      shell: bash
+      env:
+        SUPPLYCHAIN_DATA_DIR: ${{ runner.temp }}/supplychain-data
+        INPUT_PATH: ${{ inputs.path }}
+        INPUT_POLICY: ${{ inputs.policy }}
+        INPUT_MINIMUM_AGE: ${{ inputs.minimum-release-age-days }}
+        INPUT_BASELINE: ${{ inputs.baseline }}
+      run: |
+        set -euo pipefail
+        "$RUNNER_TEMP/supplychain-action" ci \
+          --policy="$INPUT_POLICY" \
+          --minimum-age-days="$INPUT_MINIMUM_AGE" \
+          --baseline="$INPUT_BASELINE" \
+          "$INPUT_PATH"
+
+branding:
+  icon: shield
+  color: purple

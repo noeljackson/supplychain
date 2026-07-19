@@ -25,11 +25,11 @@ const DefaultMaxDistance = 1
 
 // Hit is a single dependency name flagged as similar to a popular package.
 type Hit struct {
-	Name      string `json:"name"`       // the suspect dep name
-	Confused  string `json:"confused"`   // the popular name it's close to
-	Distance  int    `json:"distance"`   // Levenshtein distance
-	Source    string `json:"source"`     // path to the package.json that declares it
-	Section   string `json:"section"`    // dependencies | devDependencies | ...
+	Name     string `json:"name"`     // the suspect dep name
+	Confused string `json:"confused"` // the popular name it's close to
+	Distance int    `json:"distance"` // Levenshtein distance
+	Source   string `json:"source"`   // path to the package.json that declares it
+	Section  string `json:"section"`  // dependencies | devDependencies | ...
 }
 
 // popular returns the parsed popular-names list, lazily initialised.

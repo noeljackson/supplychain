@@ -94,8 +94,8 @@ func scanNpmLock(path string, needles map[string]map[string]struct{}, blocked ma
 		return nil, err
 	}
 	var doc struct {
-		Packages     map[string]struct{ Version string }       `json:"packages"`
-		Dependencies map[string]npmV1Dep                       `json:"dependencies"`
+		Packages     map[string]struct{ Version string } `json:"packages"`
+		Dependencies map[string]npmV1Dep                 `json:"dependencies"`
 	}
 	if err := json.Unmarshal(b, &doc); err != nil {
 		return nil, err

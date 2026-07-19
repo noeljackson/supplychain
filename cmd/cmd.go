@@ -91,6 +91,12 @@ func Run(defaultIOCs embed.FS) int {
 	switch cmd {
 	case "scan":
 		return cmdScan(g, args)
+	case "ci":
+		return cmdCI(g, args)
+	case "verify-bun":
+		return cmdVerifyBun(g, args)
+	case "init":
+		return cmdInit(g, args)
 	case "scan-all":
 		return cmdScanAll(g, args)
 	case "update":
@@ -188,6 +194,10 @@ usage: supplychain <command> [args] [flags]
 
 commands:
   scan [path]           scan a path (default: cwd) for known-bad deps + IOCs
+  ci [path]             fail-closed CI scan plus strict Bun verification
+  verify-bun [path]     verify bun.lock integrity, registry signatures, age,
+                        maintainers, and reviewed baseline
+  init github           install a pinned GitHub Actions caller workflow
   scan-all [root]       scan every git repo under root (default: ~/src)
   audit-system [flags]  forensic sweep: persistence files, dropped payloads
                         anywhere under $HOME, C2 domains in shell history,
