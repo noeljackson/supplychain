@@ -5,9 +5,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"time"
 )
 
@@ -16,6 +18,13 @@ import (
 func Run(target, binDir string) error {
 	if target == "" {
 		return errors.New("workflow: target is required")
+	}
+	hasInputs, err := containsDefinitions(target)
+	if err != nil {
+		return fmt.Errorf("workflow: discover definitions: %w", err)
+	}
+	if !hasInputs {
+		return nil
 	}
 	zizmor, err := locate(binDir)
 	if err != nil {
@@ -41,6 +50,41 @@ func Run(target, binDir string) error {
 		return fmt.Errorf("workflow: zizmor policy failed: %w", err)
 	}
 	return nil
+}
+
+func containsDefinitions(root string) (bool, error) {
+	found := false
+	err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if entry.IsDir() {
+			switch entry.Name() {
+			case ".git", "node_modules", "target":
+				if path != root {
+					return filepath.SkipDir
+				}
+			}
+			return nil
+		}
+		name := strings.ToLower(entry.Name())
+		if name == "action.yml" || name == "action.yaml" {
+			found = true
+			return fs.SkipAll
+		}
+		rel, err := filepath.Rel(root, path)
+		if err != nil {
+			return err
+		}
+		rel = filepath.ToSlash(strings.ToLower(rel))
+		if (strings.HasPrefix(rel, ".github/workflows/") || rel == ".github/dependabot.yml" || rel == ".github/dependabot.yaml") &&
+			(strings.HasSuffix(name, ".yml") || strings.HasSuffix(name, ".yaml")) {
+			found = true
+			return fs.SkipAll
+		}
+		return nil
+	})
+	return found, err
 }
 
 func locate(binDir string) (string, error) {
