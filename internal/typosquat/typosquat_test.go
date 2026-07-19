@@ -15,8 +15,8 @@ func TestLevenshtein(t *testing.T) {
 		{"", "abc", 3},
 		{"abc", "", 3},
 		{"abc", "abc", 0},
-		{"loadash", "lodash", 1},  // insertion
-		{"expresss", "express", 1}, // insertion
+		{"loadash", "lodash", 1},     // insertion
+		{"expresss", "express", 1},   // insertion
 		{"reactdom", "react-dom", 1}, // insertion
 		{"chalk", "chalkk", 1},
 		{"react", "preact", 1},
@@ -32,10 +32,10 @@ func TestLevenshtein(t *testing.T) {
 func TestClassify(t *testing.T) {
 	// classify() uses DefaultMaxDistance = 1.
 	cases := []struct {
-		name      string
-		wantHit   bool
-		wantConf  string
-		wantDist  int
+		name     string
+		wantHit  bool
+		wantConf string
+		wantDist int
 	}{
 		{"loadash", true, "lodash", 1},
 		{"expresss", true, "express", 1},
@@ -46,9 +46,9 @@ func TestClassify(t *testing.T) {
 		{"lodash", false, "", 0},
 		{"chalk", false, "", 0},
 		// real-world distance-2 false positives — should NOT trigger at d=1
-		{"vercel", false, "", 0},  // 2 edits from parcel
-		{"jose", false, "", 0},    // 2 edits from joi (also too short to even consider)
-		{"jiti", false, "", 0},    // 2 edits from vite (also too short)
+		{"vercel", false, "", 0}, // 2 edits from parcel
+		{"jose", false, "", 0},   // 2 edits from joi (also too short to even consider)
+		{"jiti", false, "", 0},   // 2 edits from vite (also too short)
 		// too-far names
 		{"completely-different-name", false, "", 0},
 		{"some-niche-utility", false, "", 0},

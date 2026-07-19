@@ -5,6 +5,7 @@ package osv
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -20,14 +21,15 @@ import (
 
 // Locate returns (path, version, nil) if osv-scanner is on PATH or under binDir.
 func Locate(binDir string) (string, string, error) {
-	candidates := []string{
-		filepath.Join(binDir, "osv-scanner"),
+	candidates := make([]string, 0, 2)
+	if binDir != "" {
+		candidates = append(candidates, filepath.Join(binDir, "osv-scanner"))
 	}
 	if p, err := exec.LookPath("osv-scanner"); err == nil {
-		candidates = append([]string{p}, candidates...)
+		candidates = append(candidates, p)
 	}
 	for _, c := range candidates {
-		if st, err := os.Stat(c); err == nil && !st.IsDir() {
+		if st, err := os.Stat(c); err == nil && !st.IsDir() && st.Mode()&0o111 != 0 {
 			out, _ := exec.Command(c, "--version").CombinedOutput()
 			ver := strings.TrimSpace(strings.SplitN(string(out), "\n", 2)[0])
 			if ver == "" {
@@ -41,7 +43,12 @@ func Locate(binDir string) (string, string, error) {
 
 // Ensure installs osv-scanner into binDir if it's not already present.
 func Ensure(binDir string) error {
-	if _, _, err := Locate(binDir); err == nil {
+	expected, ok := pinnedChecksums[runtime.GOOS+"/"+runtime.GOARCH]
+	if !ok {
+		return fmt.Errorf("no pinned osv-scanner asset for %s/%s", runtime.GOOS, runtime.GOARCH)
+	}
+	candidate := filepath.Join(binDir, "osv-scanner")
+	if actual, err := fileSHA256(candidate); err == nil && actual == expected {
 		return nil
 	}
 	return install(binDir)
@@ -138,45 +145,33 @@ func parse(b []byte) ([]PackageVuln, error) {
 	return out, nil
 }
 
-type ghAsset struct {
-	Name string `json:"name"`
-	URL  string `json:"browser_download_url"`
+const pinnedVersion = "2.4.0"
+
+var pinnedChecksums = map[string]string{
+	"darwin/amd64": "088119325156321c34c456ac3703d6013538fd71cbac82b891ab34db491e4d66",
+	"darwin/arm64": "9ca3185ad63e9ab54f7cb90f46a7362be02d80e37f0123d095a54355ea202f5d",
+	"linux/amd64":  "15314940c10d26af9c6649f150b8a47c1262e8fc7e17b1d1029b0e479e8ed8a0",
+	"linux/arm64":  "44e580752910f0ff36ec99aff59af20f65df1e859aa31e5605a8f0d055b496e9",
 }
 
-type ghRelease struct {
-	TagName string    `json:"tag_name"`
-	Assets  []ghAsset `json:"assets"`
-}
-
-// install downloads the latest osv-scanner release from GitHub and writes it
-// to binDir/osv-scanner.
+// install downloads a reviewed osv-scanner release and verifies its committed
+// digest before making it executable.
 func install(binDir string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	req, _ := http.NewRequestWithContext(ctx, "GET",
-		"https://api.github.com/repos/google/osv-scanner/releases/latest", nil)
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return fmt.Errorf("github api: %w", err)
+	platform := runtime.GOOS + "/" + runtime.GOARCH
+	expected, ok := pinnedChecksums[platform]
+	if !ok {
+		return fmt.Errorf("no pinned osv-scanner asset for %s", platform)
 	}
-	defer resp.Body.Close()
-	var rel ghRelease
-	if err := json.NewDecoder(resp.Body).Decode(&rel); err != nil {
-		return fmt.Errorf("decode release: %w", err)
-	}
-
-	osStr := runtime.GOOS
-	archStr := runtime.GOARCH
-	url := pickAsset(rel.Assets, osStr, archStr)
-	if url == "" {
-		return fmt.Errorf("no osv-scanner asset for %s/%s in release %s", osStr, archStr, rel.TagName)
-	}
+	asset := fmt.Sprintf("osv-scanner_%s_%s", runtime.GOOS, runtime.GOARCH)
+	url := fmt.Sprintf("https://github.com/google/osv-scanner/releases/download/v%s/%s", pinnedVersion, asset)
 
 	if err := os.MkdirAll(binDir, 0o755); err != nil {
 		return err
 	}
 	tmp := filepath.Join(binDir, "osv-scanner.tmp")
-	if err := download(ctx, url, tmp); err != nil {
+	if err := download(ctx, url, tmp, expected); err != nil {
 		return err
 	}
 	if err := os.Chmod(tmp, 0o755); err != nil {
@@ -185,31 +180,7 @@ func install(binDir string) error {
 	return os.Rename(tmp, filepath.Join(binDir, "osv-scanner"))
 }
 
-func pickAsset(assets []ghAsset, osStr, archStr string) string {
-	wantOS := osStr
-	wantArch := archStr
-	var fallback string
-	for _, a := range assets {
-		n := strings.ToLower(a.Name)
-		if strings.Contains(n, ".sbom") || strings.Contains(n, ".sig") ||
-			strings.Contains(n, ".sha") || strings.Contains(n, "checksum") ||
-			strings.Contains(n, "attestation") {
-			continue
-		}
-		if !strings.Contains(n, wantOS) {
-			continue
-		}
-		if strings.Contains(n, wantArch) ||
-			(wantArch == "amd64" && strings.Contains(n, "x86_64")) ||
-			(wantArch == "arm64" && strings.Contains(n, "aarch64")) {
-			return a.URL
-		}
-		fallback = a.URL
-	}
-	return fallback
-}
-
-func download(ctx context.Context, url, dest string) error {
+func download(ctx context.Context, url, dest, expected string) error {
 	req, _ := http.NewRequestWithContext(ctx, "GET", url, nil)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -219,11 +190,37 @@ func download(ctx context.Context, url, dest string) error {
 	if resp.StatusCode != 200 {
 		return fmt.Errorf("download %s: %s", url, resp.Status)
 	}
-	f, err := os.Create(dest)
+	f, err := os.OpenFile(dest, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
 	if err != nil {
 		return err
 	}
+	hash := sha256.New()
+	if _, err := io.Copy(io.MultiWriter(f, hash), resp.Body); err != nil {
+		_ = f.Close()
+		_ = os.Remove(dest)
+		return err
+	}
+	if err := f.Close(); err != nil {
+		_ = os.Remove(dest)
+		return err
+	}
+	actual := fmt.Sprintf("%x", hash.Sum(nil))
+	if actual != expected {
+		_ = os.Remove(dest)
+		return fmt.Errorf("osv-scanner checksum mismatch: got %s", actual)
+	}
+	return nil
+}
+
+func fileSHA256(path string) (string, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return "", err
+	}
 	defer f.Close()
-	_, err = io.Copy(f, resp.Body)
-	return err
+	hash := sha256.New()
+	if _, err := io.Copy(hash, f); err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("%x", hash.Sum(nil)), nil
 }

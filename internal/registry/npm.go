@@ -26,17 +26,54 @@ type Maintainer struct {
 	Email string `json:"email"`
 }
 
+// Signature is an npm registry ECDSA signature over
+// `${package.name}@${package.version}:${package.dist.integrity}`.
+type Signature struct {
+	KeyID string `json:"keyid"`
+	Sig   string `json:"sig"`
+}
+
+// Attestations advertises the registry endpoint containing Sigstore bundles.
+type Attestations struct {
+	URL        string `json:"url"`
+	Provenance *struct {
+		PredicateType string `json:"predicateType"`
+	} `json:"provenance,omitempty"`
+}
+
+// Dist is the integrity and signing metadata for one published version.
+type Dist struct {
+	Integrity    string        `json:"integrity"`
+	Tarball      string        `json:"tarball"`
+	Signatures   []Signature   `json:"signatures"`
+	Attestations *Attestations `json:"attestations,omitempty"`
+}
+
+// VersionMetadata is the subset of version metadata needed by verification.
+type VersionMetadata struct {
+	Dist Dist `json:"dist"`
+}
+
+// SigningKey is one public npm registry signing key.
+type SigningKey struct {
+	Expires string `json:"expires"`
+	KeyID   string `json:"keyid"`
+	KeyType string `json:"keytype"`
+	Scheme  string `json:"scheme"`
+	Key     string `json:"key"`
+}
+
 // Packument is the relevant subset of npm's registry response.
 // The full document is large; we only decode the fields we care about.
 type Packument struct {
-	Name        string                     `json:"name"`
-	Time        map[string]time.Time       `json:"time"`
-	Maintainers []Maintainer               `json:"maintainers"`
-	DistTags    map[string]string          `json:"dist-tags"`
+	Name        string               `json:"name"`
+	Time        map[string]time.Time `json:"time"`
+	Maintainers []Maintainer         `json:"maintainers"`
+	DistTags    map[string]string    `json:"dist-tags"`
 	// Versions holds entries for currently-published versions only. We don't
 	// decode the per-version metadata — just the set of keys — so a small
 	// stub is enough. Unpublished versions still appear in Time but not here.
-	Versions map[string]struct{} `json:"versions"`
+	Versions map[string]VersionMetadata `json:"versions"`
 }
 
 // Client is a cached registry HTTP client.
@@ -51,7 +88,7 @@ func NewClient(cacheDir string) *Client {
 	return &Client{
 		CacheDir: cacheDir,
 		TTL:      24 * time.Hour,
-		HTTP:     &http.Client{Timeout: 8 * time.Second},
+		HTTP:     &http.Client{Timeout: 15 * time.Second},
 	}
 }
 
@@ -110,12 +147,12 @@ func (c *Client) fetch(name string) (*Packument, error) {
 	encoded := url.PathEscape(name)
 	u := "https://registry.npmjs.org/" + encoded
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 	defer cancel()
 	req, _ := http.NewRequestWithContext(ctx, "GET", u, nil)
 	req.Header.Set("Accept", "application/json")
 
-	resp, err := c.HTTP.Do(req)
+	resp, err := c.doWithRetry(req)
 	if err != nil {
 		return nil, err
 	}
@@ -131,4 +168,46 @@ func (c *Client) fetch(name string) (*Packument, error) {
 		return nil, err
 	}
 	return &p, nil
+}
+
+// SigningKeys fetches the npm registry's public ECDSA signing keys. Keys are
+// deliberately not persisted in the package metadata cache because rotations
+// must be observed promptly by signature verification.
+func (c *Client) SigningKeys() ([]SigningKey, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+	defer cancel()
+	req, _ := http.NewRequestWithContext(ctx, "GET", "https://registry.npmjs.org/-/npm/v1/keys", nil)
+	req.Header.Set("Accept", "application/json")
+	resp, err := c.doWithRetry(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("registry signing keys: %s", resp.Status)
+	}
+	var doc struct {
+		Keys []SigningKey `json:"keys"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&doc); err != nil {
+		return nil, err
+	}
+	return doc.Keys, nil
+}
+
+func (c *Client) doWithRetry(req *http.Request) (*http.Response, error) {
+	var last error
+	for attempt := 0; attempt < 3; attempt++ {
+		clone := req.Clone(req.Context())
+		resp, err := c.HTTP.Do(clone)
+		if err == nil {
+			return resp, nil
+		}
+		last = err
+		if req.Context().Err() != nil {
+			break
+		}
+		time.Sleep(time.Duration(attempt+1) * 200 * time.Millisecond)
+	}
+	return nil, last
 }

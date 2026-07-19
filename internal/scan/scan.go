@@ -4,6 +4,7 @@ package scan
 
 import (
 	"errors"
+	"fmt"
 	"io/fs"
 
 	"github.com/noeljackson/supplychain/internal/drift"
@@ -52,6 +53,10 @@ type Options struct {
 	// When non-empty and the file exists, its package IOCs are unioned
 	// into the matcher set.
 	OSMCachePath string
+
+	// RequireOSV makes an unavailable or failed OSV scan fatal. Strict CI sets
+	// this so advisory coverage can never disappear silently.
+	RequireOSV bool
 }
 
 // Findings is the aggregated result of a scan.
@@ -186,11 +191,18 @@ func Run(opts Options) (Findings, error) {
 	// Availability is independent of whether the scan returned findings —
 	// a clean OSV scan also returns no hits but is "available".
 	f.OSVAvailable = isAvailable(opts.BinDir)
-	if f.OSVAvailable {
-		osvHits, osvErr := osv.Scan(opts.BinDir, opts.Target)
-		if osvErr == nil && osvHits != nil {
-			f.OSV = osvHits
+	if !f.OSVAvailable {
+		if opts.RequireOSV {
+			return f, errors.New("scan: osv-scanner is required but unavailable")
 		}
+		return f, nil
+	}
+	osvHits, osvErr := osv.Scan(opts.BinDir, opts.Target)
+	if osvErr != nil {
+		return f, fmt.Errorf("scan: OSV advisory check: %w", osvErr)
+	}
+	if osvHits != nil {
+		f.OSV = osvHits
 	}
 	return f, nil
 }

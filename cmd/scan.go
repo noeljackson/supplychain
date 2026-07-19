@@ -43,6 +43,7 @@ func cmdScan(g *Globals, args []string) int {
 		MaintainerBaseDir: filepath.Join(g.DataDir, "maintainers"),
 		TyposquatDistance: g.TyposquatDistance,
 		OSMCachePath:      filepath.Join(g.DataDir, "osm-cache.json"),
+		RequireOSV:        g.FailOnAdvisory,
 	})
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "scan error:", err)

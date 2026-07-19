@@ -1,14 +1,9 @@
 name: release-smoke
 
-# Runs after every successful tagged release: taps the homebrew formula on a
-# fresh macOS runner, installs supplychain via `brew install`, and exercises
-# `version`, `doctor`, and a small `scan` against a clean fixture. Catches
-# release-pipeline regressions before users see them.
+# Manually re-runs the release smoke suite against a selected or latest tag.
+# The normal release workflow performs its own automatic post-release smoke.
 
 on:
-  workflow_run:
-    workflows: [release]
-    types: [completed]
   workflow_dispatch:
     inputs:
       tag:
@@ -20,28 +15,21 @@ permissions:
 
 jobs:
   brew-mac:
-    # Fire on:
-    #   - workflow_dispatch (manual re-run), OR
-    #   - workflow_run when the prior `release` workflow succeeded AND ran on a tag (v*)
-    if: >-
-      github.event_name == 'workflow_dispatch' ||
-      (github.event.workflow_run.conclusion == 'success' &&
-       startsWith(github.event.workflow_run.head_branch, 'v'))
     runs-on: macos-latest
     steps:
       - name: Resolve target tag
         id: tag
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ -n "${{ inputs.tag }}" ]; then
-            echo "tag=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"
-          elif [ -n "${{ github.event.workflow_run.head_branch }}" ]; then
-            echo "tag=${{ github.event.workflow_run.head_branch }}" >> "$GITHUB_OUTPUT"
+          if [ -n "$INPUT_TAG" ]; then
+            echo "tag=$INPUT_TAG" >> "$GITHUB_OUTPUT"
           else
-            TAG=$(gh release view --repo ${{ github.repository }} --json tagName --jq .tagName)
+            TAG=$(gh release view --repo "$REPOSITORY" --json tagName --jq .tagName)
             echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           fi
-        env:
-          GH_TOKEN: ${{ github.token }}
 
       - name: Brew install via tap
         run: |
@@ -49,12 +37,13 @@ jobs:
           brew install supplychain
 
       - name: supplychain version (must match the released tag)
+        env:
+          EXPECTED_TAG: ${{ steps.tag.outputs.tag }}
         run: |
           OUT=$(supplychain version)
           echo "$OUT"
-          EXPECT="${{ steps.tag.outputs.tag }}"
-          echo "$OUT" | grep -F "$EXPECT" || {
-            echo "::error::version output '$OUT' does not contain expected tag '$EXPECT'"
+          echo "$OUT" | grep -F "$EXPECTED_TAG" || {
+            echo "::error::version output '$OUT' does not contain expected tag '$EXPECTED_TAG'"
             exit 1
           }
 
