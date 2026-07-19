@@ -28,12 +28,12 @@ type PackageJSON struct {
 // ManifestHit is a single dependency entry in a package.json that matches
 // (or could resolve to) a known-bad package@version IOC.
 type ManifestHit struct {
-	File       string  // absolute path to the package.json
-	Section    string  // dependencies | devDependencies | peerDependencies | optionalDependencies
-	Name       string  // package name
-	Range      string  // raw version spec from the manifest
-	BadVersion string  // the IOC version that the range matches
-	Reason     string  // "exact-match" | "range-includes" | "unknown-spec" | "name-blocked"
+	File       string // absolute path to the package.json
+	Section    string // dependencies | devDependencies | peerDependencies | optionalDependencies
+	Name       string // package name
+	Range      string // raw version spec from the manifest
+	BadVersion string // the IOC version that the range matches
+	Reason     string // "exact-match" | "range-includes" | "unknown-spec" | "name-blocked"
 
 	// Resolved is the version `npm install` would pick today for the (name,
 	// Range) pair — the highest currently-published version satisfying the

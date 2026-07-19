@@ -144,26 +144,26 @@ func findPayloadsSystemWide(home string, names []string) ([]ioc.PayloadHit, erro
 		wanted[n] = struct{}{}
 	}
 	skipDirs := map[string]struct{}{
-		".cache":           {},
-		"Cache":            {},
-		"Caches":           {},
-		"CacheStorage":     {},
-		"GPUCache":         {},
-		"ShaderCache":      {},
-		"Code Cache":       {},
-		".git":             {},
-		"node_modules":     {}, // payloads inside node_modules ARE caught by per-target scan; system-wide we want fs-level drops
-		".local":           {}, // walk explicit subset below
-		".npm":             {}, // ditto
-		"snap":             {},
-		"steam":            {},
-		".steam":           {},
-		".mozilla":         {},
-		".cargo":           {},
-		".rustup":          {},
-		"BraveSoftware":    {},
-		"google-chrome":    {},
-		"chromium":         {},
+		".cache":        {},
+		"Cache":         {},
+		"Caches":        {},
+		"CacheStorage":  {},
+		"GPUCache":      {},
+		"ShaderCache":   {},
+		"Code Cache":    {},
+		".git":          {},
+		"node_modules":  {}, // payloads inside node_modules ARE caught by per-target scan; system-wide we want fs-level drops
+		".local":        {}, // walk explicit subset below
+		".npm":          {}, // ditto
+		"snap":          {},
+		"steam":         {},
+		".steam":        {},
+		".mozilla":      {},
+		".cargo":        {},
+		".rustup":       {},
+		"BraveSoftware": {},
+		"google-chrome": {},
+		"chromium":      {},
 	}
 
 	var hits []ioc.PayloadHit
