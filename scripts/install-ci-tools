@@ -11,13 +11,18 @@ SYFT_VERSION=1.45.1
 GRYPE_VERSION=0.114.0
 ZIZMOR_VERSION=1.25.2
 
+install_source_tools=false
 install_image_tools=false
-if [[ "${1:-}" == "--image-tools" ]]; then
-  install_image_tools=true
-elif [[ $# -ne 0 ]]; then
-  echo "usage: install-ci-tools [--image-tools]" >&2
-  exit 2
+if [[ $# -eq 0 ]]; then
+  install_source_tools=true
 fi
+for arg in "$@"; do
+  case "$arg" in
+    --source-tools) install_source_tools=true ;;
+    --image-tools) install_image_tools=true ;;
+    *) echo "usage: install-ci-tools [--source-tools] [--image-tools]" >&2; exit 2 ;;
+  esac
+done
 
 case "$(uname -s)" in
   Linux) platform=linux ;;
@@ -53,22 +58,24 @@ download() {
   printf '%s  %s\n' "$expected" "$destination" | sha256sum --check --status -
 }
 
-osv_asset="osv-scanner_${platform}_${arch}"
-download \
-  "https://github.com/google/osv-scanner/releases/download/v${OSV_VERSION}/${osv_asset}" \
-  "$work_dir/osv-scanner" "$osv_sha"
-install -m 0755 "$work_dir/osv-scanner" "$bin_dir/osv-scanner"
+if [[ "$install_source_tools" == true ]]; then
+  osv_asset="osv-scanner_${platform}_${arch}"
+  download \
+    "https://github.com/google/osv-scanner/releases/download/v${OSV_VERSION}/${osv_asset}" \
+    "$work_dir/osv-scanner" "$osv_sha"
+  install -m 0755 "$work_dir/osv-scanner" "$bin_dir/osv-scanner"
 
-case "$arch" in
-  amd64) zizmor_arch=x86_64 ;;
-  arm64) zizmor_arch=aarch64 ;;
-esac
-zizmor_archive="zizmor-${zizmor_arch}-unknown-linux-gnu.tar.gz"
-download \
-  "https://github.com/zizmorcore/zizmor/releases/download/v${ZIZMOR_VERSION}/${zizmor_archive}" \
-  "$work_dir/$zizmor_archive" "$zizmor_sha"
-tar -xzf "$work_dir/$zizmor_archive" -C "$work_dir" zizmor
-install -m 0755 "$work_dir/zizmor" "$bin_dir/zizmor"
+  case "$arch" in
+    amd64) zizmor_arch=x86_64 ;;
+    arm64) zizmor_arch=aarch64 ;;
+  esac
+  zizmor_archive="zizmor-${zizmor_arch}-unknown-linux-gnu.tar.gz"
+  download \
+    "https://github.com/zizmorcore/zizmor/releases/download/v${ZIZMOR_VERSION}/${zizmor_archive}" \
+    "$work_dir/$zizmor_archive" "$zizmor_sha"
+  tar -xzf "$work_dir/$zizmor_archive" -C "$work_dir" zizmor
+  install -m 0755 "$work_dir/zizmor" "$bin_dir/zizmor"
+fi
 
 install_archive() {
   local tool=$1 version=$2 expected=$3
@@ -85,8 +92,10 @@ if [[ "$install_image_tools" == true ]]; then
   install_archive grype "$GRYPE_VERSION" "$grype_sha"
 fi
 
-"$bin_dir/osv-scanner" --version
-"$bin_dir/zizmor" --version
+if [[ "$install_source_tools" == true ]]; then
+  "$bin_dir/osv-scanner" --version
+  "$bin_dir/zizmor" --version
+fi
 if [[ "$install_image_tools" == true ]]; then
   "$bin_dir/syft" version
   "$bin_dir/grype" version

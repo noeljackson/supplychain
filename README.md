@@ -63,7 +63,17 @@ scans require a fresh, hash-valid Grype database and a successful update check.
 
 The reusable workflow is source-only because reusable jobs cannot see an image
 built in a caller job. Use the composite action in the same job, after
-`docker build`, when image scanning is required.
+`docker build`, when image scanning is required. If an earlier step or job has
+already run the source gate, set `scan-source: false` on the post-build action
+to install and run only Syft and Grype.
+
+```yaml
+- uses: noeljackson/supplychain@FULL_COMMIT_SHA
+  with:
+    scan-source: false
+    image: app:test
+    fail-on-severity: high
+```
 
 Local image scan with already-installed Syft and Grype:
 
