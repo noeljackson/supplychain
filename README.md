@@ -54,7 +54,12 @@ Strict scans also run zizmor offline against GitHub Actions definitions,
 failing on medium-or-higher, medium-confidence findings and workflow schema
 errors without exposing a GitHub token to the analyzer. They also run Gitleaks
 with redaction and analytics disabled so checked-out repository secrets fail
-closed without printing secret values.
+closed without printing secret values. The scanner stages a temporary hard-link
+view of tracked and non-ignored untracked files, so generated dependencies and
+build artifacts are excluded without copying secret-bearing source files or
+following repository symlinks. Repository-controlled Gitleaks config and ignore
+files cannot weaken the global policy; reviewed inline `gitleaks:allow` comments
+are the explicit exception mechanism.
 
 When `image` is set, the action creates an SPDX JSON SBOM with Syft and scans
 that exact document with Grype. The `sbom` action output is suitable for later
