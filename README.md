@@ -52,14 +52,17 @@ The root composite action is also available inside an existing job:
 
 Strict scans also run zizmor offline against GitHub Actions definitions,
 failing on medium-or-higher, medium-confidence findings and workflow schema
-errors without exposing a GitHub token to the analyzer.
+errors without exposing a GitHub token to the analyzer. They also run Gitleaks
+with redaction and analytics disabled so checked-out repository secrets fail
+closed without printing secret values.
 
 When `image` is set, the action creates an SPDX JSON SBOM with Syft and scans
 that exact document with Grype. The `sbom` action output is suitable for later
-artifact upload or attestation. Syft, Grype, and OSV Scanner are installed from
-cooldown-aged, immutable releases whose expected SHA-256 hashes live in this
-repository. Strict source scans fail if OSV Scanner is absent or fails; image
-scans require a fresh, hash-valid Grype database and a successful update check.
+artifact upload or attestation. Gitleaks, Syft, Grype, and OSV Scanner are
+installed from cooldown-aged, immutable releases whose expected SHA-256 hashes
+live in this repository. Strict source scans fail if OSV Scanner is absent or
+fails; image scans require a fresh, hash-valid Grype database and a successful
+update check.
 
 The reusable workflow is source-only because reusable jobs cannot see an image
 built in a caller job. Use the composite action in the same job, after
@@ -101,6 +104,7 @@ provenance.
 make test
 make install
 supplychain ci --policy=strict .
+supplychain secrets .
 ```
 
 Normal workstation scans may refresh public IOC data. CI always uses the IOC
