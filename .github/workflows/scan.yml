@@ -18,6 +18,11 @@ on:
         required: false
         type: string
         default: .supplychain/bun-baseline.json
+      gitleaks-config:
+        description: Explicit reviewed Gitleaks config path inside the scan target
+        required: false
+        type: string
+        default: ""
 
 permissions:
   contents: read
@@ -46,3 +51,4 @@ jobs:
           policy: ${{ inputs.policy }}
           minimum-release-age-days: ${{ inputs.minimum-release-age-days }}
           baseline: ${{ inputs.baseline }}
+          gitleaks-config: ${{ inputs.gitleaks-config }}

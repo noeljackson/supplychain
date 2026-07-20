@@ -16,8 +16,9 @@ import (
 const scanTimeout = 10 * time.Minute
 
 // Run scans target with Gitleaks. Findings are reported by Gitleaks and cause
-// a non-zero exit.
-func Run(target, binDir string) error {
+// a non-zero exit. Repository configuration is ignored unless config is an
+// explicit, tracked path inside target.
+func Run(target, binDir, config string) error {
 	if target == "" {
 		return errors.New("secrets: target is required")
 	}
@@ -27,12 +28,16 @@ func Run(target, binDir string) error {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), scanTimeout)
 	defer cancel()
-	scanRoot, cleanup, err := stageGitVisible(ctx, target)
+	configPath, configRel, err := resolveConfig(ctx, target, config)
+	if err != nil {
+		return err
+	}
+	scanRoot, cleanup, err := stageGitVisible(ctx, target, configRel)
 	if err != nil {
 		return err
 	}
 	defer cleanup()
-	cmd := exec.CommandContext(ctx, gitleaks,
+	args := []string{
 		"dir",
 		".",
 		"--no-banner",
@@ -41,7 +46,11 @@ func Run(target, binDir string) error {
 		"--log-level", "warn",
 		"--max-target-megabytes", "10",
 		"--exit-code", "1",
-	)
+	}
+	if configPath != "" {
+		args = append(args, "--config", configPath)
+	}
+	cmd := exec.CommandContext(ctx, gitleaks, args...)
 	cmd.Dir = scanRoot
 	cmd.Env = append(withoutGitleaksConfig(os.Environ()), "GITLEAKS_ENABLE_ANALYTICS=false")
 	cmd.Stdout = os.Stdout
@@ -61,7 +70,7 @@ func Run(target, binDir string) error {
 // generated binaries and dependency caches. The staging tree lives under the
 // repository's Git directory, has no copied secret material, and is removed
 // after every scan.
-func stageGitVisible(ctx context.Context, target string) (string, func(), error) {
+func stageGitVisible(ctx context.Context, target, explicitConfigRel string) (string, func(), error) {
 	target, err := filepath.Abs(target)
 	if err != nil {
 		return "", nil, fmt.Errorf("secrets: resolve target: %w", err)
@@ -123,7 +132,7 @@ func stageGitVisible(ctx context.Context, target string) (string, func(), error)
 			continue
 		}
 		seen[scanRel] = struct{}{}
-		if scanRel == ".gitleaks.toml" || scanRel == ".gitleaksignore" {
+		if scanRel == ".gitleaks.toml" || scanRel == ".gitleaksignore" || scanRel == explicitConfigRel {
 			continue
 		}
 		info, err := os.Lstat(source)
@@ -148,6 +157,64 @@ func stageGitVisible(ctx context.Context, target string) (string, func(), error)
 		}
 	}
 	return scanRoot, cleanup, nil
+}
+
+// resolveConfig accepts only an explicitly selected, tracked, regular file
+// inside target. The default remains immune to repository-owned Gitleaks
+// configuration, and .gitleaksignore is never honored.
+func resolveConfig(ctx context.Context, target, config string) (string, string, error) {
+	if config == "" {
+		return "", "", nil
+	}
+	target, err := filepath.Abs(target)
+	if err != nil {
+		return "", "", fmt.Errorf("secrets: resolve target: %w", err)
+	}
+	realTarget, err := filepath.EvalSymlinks(target)
+	if err != nil {
+		return "", "", fmt.Errorf("secrets: resolve target links: %w", err)
+	}
+	candidate := config
+	if !filepath.IsAbs(candidate) {
+		candidate = filepath.Join(target, candidate)
+	}
+	candidate = filepath.Clean(candidate)
+	info, err := os.Lstat(candidate)
+	if err != nil {
+		return "", "", fmt.Errorf("secrets: inspect Gitleaks config: %w", err)
+	}
+	if !info.Mode().IsRegular() {
+		return "", "", errors.New("secrets: Gitleaks config must be a regular file, not a symlink")
+	}
+	realCandidate, err := filepath.EvalSymlinks(candidate)
+	if err != nil {
+		return "", "", fmt.Errorf("secrets: resolve Gitleaks config links: %w", err)
+	}
+	realRel, err := filepath.Rel(realTarget, realCandidate)
+	if err != nil || outside(realRel) {
+		return "", "", errors.New("secrets: Gitleaks config must be inside the scan target")
+	}
+	configRel, err := filepath.Rel(target, candidate)
+	if err != nil || outside(configRel) {
+		return "", "", errors.New("secrets: Gitleaks config must be inside the scan target")
+	}
+
+	rootOutput, err := exec.CommandContext(ctx, "git", "-C", target, "rev-parse", "--show-toplevel").Output()
+	if err != nil {
+		return "", "", errors.New("secrets: target must be inside a Git worktree")
+	}
+	root := filepath.Clean(strings.TrimSpace(string(rootOutput)))
+	repoRel, err := filepath.Rel(root, candidate)
+	if err != nil || outside(repoRel) {
+		return "", "", errors.New("secrets: Gitleaks config must be inside the Git worktree")
+	}
+	tracked := exec.CommandContext(ctx, "git", "-C", root, "ls-files", "--error-unmatch", "--", repoRel)
+	tracked.Stdout = nil
+	tracked.Stderr = nil
+	if err := tracked.Run(); err != nil {
+		return "", "", errors.New("secrets: Gitleaks config must be tracked by Git")
+	}
+	return realCandidate, filepath.Clean(configRel), nil
 }
 
 func outside(path string) bool {

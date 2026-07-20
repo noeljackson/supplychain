@@ -50,7 +50,7 @@ func TestRunUsesPinnedFlags(t *testing.T) {
 	target := initGitTarget(t)
 	t.Setenv("GITLEAKS_CONFIG", "/tmp/untrusted-gitleaks.toml")
 	t.Setenv("GITLEAKS_CONFIG_TOML", "[allowlist]")
-	if err := Run(target, binDir); err != nil {
+	if err := Run(target, binDir, ""); err != nil {
 		t.Fatalf("Run returned error: %v", err)
 	}
 
@@ -88,7 +88,7 @@ func TestRunPropagatesFindingExit(t *testing.T) {
 	binDir := t.TempDir()
 	writeFakeGitleaks(t, binDir, filepath.Join(t.TempDir(), "gitleaks.log"), 1)
 
-	err := Run(initGitTarget(t), binDir)
+	err := Run(initGitTarget(t), binDir, "")
 	if err == nil || !strings.Contains(err.Error(), "gitleaks policy failed") {
 		t.Fatalf("expected policy error, got %v", err)
 	}
@@ -105,7 +105,7 @@ func TestStageGitVisibleExcludesIgnoredAndNonRegularFiles(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	scanRoot, cleanup, err := stageGitVisible(context.Background(), target)
+	scanRoot, cleanup, err := stageGitVisible(context.Background(), target, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -125,9 +125,76 @@ func TestStageGitVisibleExcludesIgnoredAndNonRegularFiles(t *testing.T) {
 func TestRunRequiresGitleaks(t *testing.T) {
 	t.Setenv("PATH", t.TempDir())
 
-	err := Run(t.TempDir(), "")
+	err := Run(t.TempDir(), "", "")
 	if err == nil || !strings.Contains(err.Error(), "gitleaks is required") {
 		t.Fatalf("expected missing gitleaks error, got %v", err)
+	}
+}
+
+func TestRunUsesExplicitTrackedConfig(t *testing.T) {
+	binDir := t.TempDir()
+	logPath := filepath.Join(t.TempDir(), "gitleaks.log")
+	writeFakeGitleaks(t, binDir, logPath, 0)
+
+	target := initGitTarget(t)
+	configPath := filepath.Join(target, "policy", "gitleaks.toml")
+	writeTestFile(t, configPath, "[extend]\nuseDefault = true\n")
+	gitAdd(t, target, "policy/gitleaks.toml")
+	if err := Run(target, binDir, "policy/gitleaks.toml"); err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+
+	got, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(got)
+	for _, want := range []string{"<--config>", "<" + configPath + ">"} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("fake gitleaks log missing %q:\n%s", want, text)
+		}
+	}
+}
+
+func TestRunRejectsUntrackedConfig(t *testing.T) {
+	binDir := t.TempDir()
+	writeFakeGitleaks(t, binDir, filepath.Join(t.TempDir(), "gitleaks.log"), 0)
+	target := initGitTarget(t)
+	writeTestFile(t, filepath.Join(target, ".gitleaks.toml"), "[extend]\nuseDefault = true\n")
+
+	err := Run(target, binDir, ".gitleaks.toml")
+	if err == nil || !strings.Contains(err.Error(), "must be tracked") {
+		t.Fatalf("expected untracked config error, got %v", err)
+	}
+}
+
+func TestRunRejectsConfigOutsideTarget(t *testing.T) {
+	binDir := t.TempDir()
+	writeFakeGitleaks(t, binDir, filepath.Join(t.TempDir(), "gitleaks.log"), 0)
+	target := initGitTarget(t)
+	outsideConfig := filepath.Join(t.TempDir(), "gitleaks.toml")
+	writeTestFile(t, outsideConfig, "[extend]\nuseDefault = true\n")
+
+	err := Run(target, binDir, outsideConfig)
+	if err == nil || !strings.Contains(err.Error(), "inside the scan target") {
+		t.Fatalf("expected outside-target config error, got %v", err)
+	}
+}
+
+func TestRunRejectsConfigSymlink(t *testing.T) {
+	binDir := t.TempDir()
+	writeFakeGitleaks(t, binDir, filepath.Join(t.TempDir(), "gitleaks.log"), 0)
+	target := initGitTarget(t)
+	realConfig := filepath.Join(target, "policy.toml")
+	writeTestFile(t, realConfig, "[extend]\nuseDefault = true\n")
+	if err := os.Symlink("policy.toml", filepath.Join(target, ".gitleaks.toml")); err != nil {
+		t.Fatal(err)
+	}
+	gitAdd(t, target, "policy.toml", ".gitleaks.toml")
+
+	err := Run(target, binDir, ".gitleaks.toml")
+	if err == nil || !strings.Contains(err.Error(), "regular file") {
+		t.Fatalf("expected symlink config error, got %v", err)
 	}
 }
 
@@ -156,6 +223,14 @@ func initGitTarget(t *testing.T) string {
 		}
 	}
 	return target
+}
+
+func gitAdd(t *testing.T, target string, paths ...string) {
+	t.Helper()
+	args := append([]string{"-C", target, "add", "--"}, paths...)
+	if output, err := exec.Command("git", args...).CombinedOutput(); err != nil {
+		t.Fatalf("git add %v: %v: %s", paths, err, output)
+	}
 }
 
 func writeTestFile(t *testing.T, path, contents string) {

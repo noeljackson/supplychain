@@ -37,6 +37,8 @@ jobs:
         with:
           path: .
           policy: strict
+          # Optional: only for a tracked policy with narrowly reviewed exceptions.
+          # gitleaks-config: .gitleaks.toml
 ```
 
 Generate the same workflow from a trusted local installation:

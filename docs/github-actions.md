@@ -38,6 +38,8 @@ jobs:
     uses: noeljackson/supplychain/.github/workflows/scan.yml@FULL_COMMIT_SHA
     with:
       policy: strict
+      # Optional: only for a tracked policy with narrowly reviewed exceptions.
+      # gitleaks-config: .gitleaks.toml
 ```
 
 Save this as `.github/workflows/supplychain.yml`, or generate it from a trusted
