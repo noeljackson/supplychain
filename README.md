@@ -10,6 +10,8 @@ executing code from the repository being inspected.
 - [Recommended GitHub Actions setup](docs/github-actions.md) — the complete
   source-only, container-image, monorepo, permissions, and repository-settings
   patterns.
+- [Recommended Gitea Actions setup](docs/gitea-actions.md) — portable
+  per-repository workflows plus organization/instance-wide scoped enforcement.
 - [Usage guide](docs/usage.md) — local installation, commands, Bun baselines,
   secret findings, image scans, and troubleshooting.
 
@@ -53,6 +55,13 @@ To add the caller workflow to a repository:
 supplychain init github --ref=FULL_COMMIT_SHA
 ```
 
+Gitea uses the composite action through an absolute, SHA-pinned URL. See the
+[Gitea guide](docs/gitea-actions.md), or generate the per-repository workflow:
+
+```bash
+supplychain init gitea --ref=FULL_COMMIT_SHA
+```
+
 The root composite action is also available inside an existing job:
 
 ```yaml
@@ -66,7 +75,7 @@ The root composite action is also available inside an existing job:
     fail-on-severity: high
 ```
 
-Strict scans also run zizmor offline against GitHub Actions definitions,
+Strict scans also run zizmor offline against GitHub and Gitea Actions definitions,
 failing on medium-or-higher, medium-confidence findings and workflow schema
 errors without exposing a GitHub token to the analyzer. They also run Gitleaks
 with redaction and analytics disabled so checked-out repository secrets fail
