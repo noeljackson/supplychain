@@ -5,6 +5,14 @@ known malicious packages, lockfile drift, install hooks, persistence artifacts,
 maintainer changes, fresh npm releases, and strict Bun registry metadata without
 executing code from the repository being inspected.
 
+## Start here
+
+- [Recommended GitHub Actions setup](docs/github-actions.md) — the complete
+  source-only, container-image, monorepo, permissions, and repository-settings
+  patterns.
+- [Usage guide](docs/usage.md) — local installation, commands, Bun baselines,
+  secret findings, image scans, and troubleshooting.
+
 ## GitHub Action
 
 Pin the action to a full commit SHA:
@@ -16,9 +24,16 @@ on:
   pull_request:
   push:
     branches: [main]
+  schedule:
+    - cron: "17 7 * * 1"
+  workflow_dispatch:
 
 permissions:
   contents: read
+
+concurrency:
+  group: supplychain-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   scan:
@@ -29,7 +44,8 @@ jobs:
 
 The reusable workflow checks out its own source at the exact called-workflow
 commit, builds it with Go module checksum verification, and scans the caller
-checkout without running package-manager or project scripts.
+checkout without running package-manager or project scripts. Pair it with the
+repository controls in the [GitHub Actions guide](docs/github-actions.md).
 
 To add the caller workflow to a repository:
 
@@ -111,6 +127,9 @@ make install
 supplychain ci --policy=strict .
 supplychain secrets .
 ```
+
+For all commands and local helper requirements, see the
+[usage guide](docs/usage.md).
 
 Normal workstation scans may refresh public IOC data. CI always uses the IOC
 snapshot embedded in the pinned scanner source. The global action downloads
