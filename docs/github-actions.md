@@ -5,6 +5,10 @@ strict, read-only source gate on pull requests, the default branch, a weekly
 schedule, and manual dispatch. It does not pass secrets to the scanner or run
 project install scripts.
 
+For Gitea, use the separate [Gitea Actions guide](gitea-actions.md); its
+absolute action URLs and global scoped-workflow model are intentionally
+different.
+
 ## Source-only repositories
 
 Resolve and review a `supplychain` commit, then replace `FULL_COMMIT_SHA` with
@@ -42,6 +46,10 @@ local installation:
 ```bash
 supplychain init github --ref=FULL_COMMIT_SHA
 ```
+
+Copyable templates are available in
+[`examples/github/source.yml`](../examples/github/source.yml) and
+[`examples/github/image.yml`](../examples/github/image.yml).
 
 The generator rejects mutable references. The called workflow has a 20-minute
 timeout, checks out the caller without persisted credentials, checks out its

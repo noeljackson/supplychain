@@ -202,11 +202,11 @@ commands:
   scan [path]           scan a path (default: cwd) for known-bad deps + IOCs
   ci [path]             fail-closed CI scan plus strict Bun verification
   image IMAGE           generate an SPDX SBOM with Syft and scan it with Grype
-  workflows [path]      audit GitHub Actions definitions with zizmor
+  workflows [path]      audit GitHub/Gitea Actions definitions with zizmor
   secrets [path]        scan checked-out repository files with Gitleaks
   verify-bun [path]     verify bun.lock integrity, registry signatures, age,
                         maintainers, and reviewed baseline
-  init github           install a pinned GitHub Actions caller workflow
+  init <github|gitea>   install a pinned Actions caller workflow
   scan-all [root]       scan every git repo under root (default: ~/src)
   audit-system [flags]  forensic sweep: persistence files, dropped payloads
                         anywhere under $HOME, C2 domains in shell history,

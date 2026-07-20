@@ -34,11 +34,33 @@ func TestContainsWorkflowDefinitions(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "ci.yaml"), []byte("name: ci\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	found, err := containsDefinitions(target)
+	definitions, err := definitionPaths(target)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !found {
+	if len(definitions) != 1 || definitions[0] != filepath.Join(dir, "ci.yaml") {
 		t.Fatal("expected workflow definition to be discovered")
+	}
+}
+
+func TestContainsGiteaWorkflowDefinitions(t *testing.T) {
+	target := t.TempDir()
+	for _, directory := range []string{
+		filepath.Join(target, ".gitea", "workflows"),
+		filepath.Join(target, ".gitea", "scoped_workflows"),
+	} {
+		if err := os.MkdirAll(directory, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(directory, "supplychain.yml"), []byte("name: supplychain\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	definitions, err := definitionPaths(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(definitions) != 2 {
+		t.Fatalf("expected two Gitea workflow definitions, got %v", definitions)
 	}
 }
