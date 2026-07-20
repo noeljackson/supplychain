@@ -14,11 +14,17 @@ const githubWorkflow = `name: supplychain
 on:
   pull_request:
   push:
+    branches: [main]
   schedule:
     - cron: "17 7 * * 1"
+  workflow_dispatch:
 
 permissions:
   contents: read
+
+concurrency:
+  group: supplychain-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   scan:
