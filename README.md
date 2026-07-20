@@ -95,7 +95,10 @@ artifact upload or attestation. Gitleaks, Syft, Grype, and OSV Scanner are
 installed from cooldown-aged, immutable releases whose expected SHA-256 hashes
 live in this repository. Strict source scans fail if OSV Scanner is absent or
 fails; image scans require a fresh, hash-valid Grype database and a successful
-update check.
+update check. Image scans always use an isolated empty Grype config, so a
+repository cannot silently weaken the gate with `.grype.yaml`. A reviewed,
+tracked OpenVEX document may be selected explicitly with `vex`; untracked,
+external, oversized, and symlinked policy files are rejected.
 
 The reusable workflow is source-only because reusable jobs cannot see an image
 built in a caller job. Use the composite action in the same job, after
@@ -109,12 +112,15 @@ to install and run only Syft and Grype.
     scan-source: false
     image: app:test
     fail-on-severity: high
+    only-fixed: true
+    vex: security/app.openvex.json
 ```
 
 Local image scan with already-installed Syft and Grype:
 
 ```bash
-supplychain image --sbom=app.spdx.json --fail-on=high app:test
+supplychain image --sbom=app.spdx.json --fail-on=high --only-fixed \
+  --vex=security/app.openvex.json app:test
 ```
 
 ## Bun verification
