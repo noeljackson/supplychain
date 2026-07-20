@@ -13,6 +13,7 @@ func cmdCI(g *Globals, args []string) int {
 	policy := fs.String("policy", "strict", "CI policy: auto or strict")
 	minimumAge := fs.Int("minimum-age-days", 7, "minimum age for Bun packages")
 	baseline := fs.String("baseline", ".supplychain/bun-baseline.json", "Bun baseline path")
+	gitleaksConfig := fs.String("gitleaks-config", "", "explicit reviewed Gitleaks config inside the target")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -31,7 +32,11 @@ func cmdCI(g *Globals, args []string) int {
 	secretsExit := 0
 	if *policy == "strict" {
 		workflowsExit = cmdWorkflows(g, []string{target})
-		secretsExit = cmdSecrets(g, []string{target})
+		secretsArgs := []string{target}
+		if *gitleaksConfig != "" {
+			secretsArgs = []string{"--gitleaks-config=" + *gitleaksConfig, target}
+		}
+		secretsExit = cmdSecrets(g, secretsArgs)
 	}
 
 	abs, err := filepath.Abs(target)

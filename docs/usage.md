@@ -44,6 +44,9 @@ those helper programs with the system package manager and then run
 # The local equivalent of the required source gate
 supplychain ci --policy=strict .
 
+# Opt in to one reviewed, tracked repository policy
+supplychain ci --policy=strict --gitleaks-config=.gitleaks.toml .
+
 # General repository/dependency/IOC scan
 supplychain scan .
 
@@ -127,9 +130,23 @@ dependencies, ignored build output, and symlink targets are excluded.
 
 If a finding is a real credential, rotate or revoke it before doing anything
 else, then remove it from the current tree and relevant history. For a reviewed
-synthetic test value, an inline `gitleaks:allow` comment is the explicit
-exception mechanism. Repository-owned Gitleaks configuration and ignore files
-cannot weaken the global action policy.
+synthetic test value, an inline `gitleaks:allow` comment is the smallest
+exception mechanism.
+
+Repository-owned Gitleaks configuration and ignore files are ignored by
+default. If several public values need narrow rule/path/value-shape exceptions,
+select a reviewed config explicitly:
+
+```bash
+supplychain secrets --gitleaks-config=.gitleaks.toml .
+supplychain ci --policy=strict --gitleaks-config=.gitleaks.toml .
+```
+
+The selected file must be a regular, tracked file inside the scan target. It is
+not scanned as source, and environment-provided Gitleaks configuration remains
+scrubbed. `.gitleaksignore` is never honored. Treat changes to the selected
+policy like workflow changes: require security-owner review and keep every
+allowlist narrower than the finding it documents.
 
 ## Image findings
 

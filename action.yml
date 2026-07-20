@@ -19,6 +19,10 @@ inputs:
     description: Reviewed Bun baseline path relative to the repository
     required: false
     default: .supplychain/bun-baseline.json
+  gitleaks-config:
+    description: Explicit reviewed Gitleaks config path inside the scan target
+    required: false
+    default: ""
   scan-source:
     description: Run repository, dependency, OSV, Bun, Gitleaks, and zizmor checks
     required: false
@@ -91,13 +95,19 @@ runs:
         INPUT_POLICY: ${{ inputs.policy }}
         INPUT_MINIMUM_AGE: ${{ inputs.minimum-release-age-days }}
         INPUT_BASELINE: ${{ inputs.baseline }}
+        INPUT_GITLEAKS_CONFIG: ${{ inputs.gitleaks-config }}
         SUPPLYCHAIN_BIN_DIR: ${{ runner.temp }}/supplychain-bin
       run: |
         set -euo pipefail
+        config_args=()
+        if [ -n "$INPUT_GITLEAKS_CONFIG" ]; then
+          config_args+=(--gitleaks-config="$INPUT_GITLEAKS_CONFIG")
+        fi
         "$RUNNER_TEMP/supplychain-action" ci \
           --policy="$INPUT_POLICY" \
           --minimum-age-days="$INPUT_MINIMUM_AGE" \
           --baseline="$INPUT_BASELINE" \
+          "${config_args[@]}" \
           "$INPUT_PATH"
     - name: Inventory and scan OCI image
       id: image

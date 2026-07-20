@@ -83,8 +83,11 @@ closed without printing secret values. The scanner stages a temporary hard-link
 view of tracked and non-ignored untracked files, so generated dependencies and
 build artifacts are excluded without copying secret-bearing source files or
 following repository symlinks. Repository-controlled Gitleaks config and ignore
-files cannot weaken the global policy; reviewed inline `gitleaks:allow` comments
-are the explicit exception mechanism.
+files are ignored by default. Reviewed inline `gitleaks:allow` comments are the
+simplest explicit exception mechanism. Repositories with several narrowly
+documented public-value exceptions may opt in to a tracked config with
+`gitleaks-config`; the scanner rejects untracked, external, and symlinked policy
+files, and never honors `.gitleaksignore`.
 
 When `image` is set, the action creates an SPDX JSON SBOM with Syft and scans
 that exact document with Grype. The `sbom` action output is suitable for later
