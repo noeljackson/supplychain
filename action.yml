@@ -39,6 +39,10 @@ inputs:
     description: Only fail image vulnerabilities for which a fix exists
     required: false
     default: "false"
+  vex:
+    description: Explicit reviewed OpenVEX document inside the checked-out repository
+    required: false
+    default: ""
 
 outputs:
   sbom:
@@ -117,6 +121,7 @@ runs:
         INPUT_IMAGE: ${{ inputs.image }}
         INPUT_FAIL_ON: ${{ inputs.fail-on-severity }}
         INPUT_ONLY_FIXED: ${{ inputs.only-fixed }}
+        INPUT_VEX: ${{ inputs.vex }}
         SUPPLYCHAIN_BIN_DIR: ${{ runner.temp }}/supplychain-bin
       run: |
         set -euo pipefail
@@ -126,10 +131,15 @@ runs:
           *) echo "only-fixed must be true or false" >&2; exit 2 ;;
         esac
         sbom="$RUNNER_TEMP/supplychain.spdx.json"
+        vex=()
+        if [ -n "$INPUT_VEX" ]; then
+          vex=(--vex="$INPUT_VEX")
+        fi
         "$RUNNER_TEMP/supplychain-action" image \
           --sbom="$sbom" \
           --fail-on="$INPUT_FAIL_ON" \
           "${only_fixed[@]}" \
+          "${vex[@]}" \
           "$INPUT_IMAGE"
         echo "sbom=$sbom" >> "$GITHUB_OUTPUT"
 

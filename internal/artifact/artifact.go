@@ -18,11 +18,13 @@ const scanTimeout = 15 * time.Minute
 
 // Options controls an image scan.
 type Options struct {
-	Image     string
-	SBOMPath  string
-	FailOn    string
-	OnlyFixed bool
-	BinDir    string
+	Image      string
+	SBOMPath   string
+	FailOn     string
+	OnlyFixed  bool
+	VEXPath    string
+	PolicyRoot string
+	BinDir     string
 }
 
 // Run inventories Image with Syft, validates the resulting SPDX document,
@@ -36,6 +38,10 @@ func Run(opts Options) error {
 	}
 	if !validSeverity(opts.FailOn) {
 		return fmt.Errorf("artifact: invalid severity %q", opts.FailOn)
+	}
+	vexPath, err := resolveReviewedFile(opts.PolicyRoot, opts.VEXPath, "VEX")
+	if err != nil {
+		return err
 	}
 
 	syft, err := locate("syft", opts.BinDir)
@@ -62,9 +68,29 @@ func Run(opts Options) error {
 		return err
 	}
 
-	args := []string{"sbom:" + opts.SBOMPath, "--fail-on", opts.FailOn}
+	// Always select an isolated, empty config. Without an explicit config,
+	// Grype discovers repository-owned .grype.yaml files, which could silently
+	// weaken the caller's severity gate or add unreviewed ignore rules.
+	grypeConfig, err := os.CreateTemp("", "supplychain-grype-*.yaml")
+	if err != nil {
+		return fmt.Errorf("artifact: create isolated Grype config: %w", err)
+	}
+	grypeConfigPath := grypeConfig.Name()
+	defer os.Remove(grypeConfigPath)
+	if _, err := grypeConfig.WriteString("ignore: []\n"); err != nil {
+		_ = grypeConfig.Close()
+		return fmt.Errorf("artifact: write isolated Grype config: %w", err)
+	}
+	if err := grypeConfig.Close(); err != nil {
+		return fmt.Errorf("artifact: close isolated Grype config: %w", err)
+	}
+
+	args := []string{"--config", grypeConfigPath, "sbom:" + opts.SBOMPath, "--fail-on", opts.FailOn}
 	if opts.OnlyFixed {
 		args = append(args, "--only-fixed")
+	}
+	if vexPath != "" {
+		args = append(args, "--vex", vexPath)
 	}
 	grypeCmd := exec.CommandContext(ctx, grype, args...)
 	grypeCmd.Env = append(os.Environ(),
@@ -84,6 +110,68 @@ func Run(opts Options) error {
 		return fmt.Errorf("artifact: grype policy failed: %w", err)
 	}
 	return nil
+}
+
+// resolveReviewedFile accepts only an explicitly selected, tracked, regular
+// policy file inside policyRoot. This prevents unreviewed files, symlinks, and
+// paths outside the checked-out repository from altering scan results.
+func resolveReviewedFile(policyRoot, selected, kind string) (string, error) {
+	if selected == "" {
+		return "", nil
+	}
+	if policyRoot == "" {
+		policyRoot = "."
+	}
+	root, err := filepath.Abs(policyRoot)
+	if err != nil {
+		return "", fmt.Errorf("artifact: resolve policy root: %w", err)
+	}
+	realRoot, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		return "", fmt.Errorf("artifact: resolve policy root links: %w", err)
+	}
+	candidate := selected
+	if !filepath.IsAbs(candidate) {
+		candidate = filepath.Join(root, candidate)
+	}
+	candidate = filepath.Clean(candidate)
+	info, err := os.Lstat(candidate)
+	if err != nil {
+		return "", fmt.Errorf("artifact: inspect %s policy: %w", kind, err)
+	}
+	if !info.Mode().IsRegular() {
+		return "", fmt.Errorf("artifact: %s policy must be a regular file, not a symlink", kind)
+	}
+	if info.Size() > 1024*1024 {
+		return "", fmt.Errorf("artifact: %s policy exceeds 1 MiB", kind)
+	}
+	realCandidate, err := filepath.EvalSymlinks(candidate)
+	if err != nil {
+		return "", fmt.Errorf("artifact: resolve %s policy links: %w", kind, err)
+	}
+	if rel, err := filepath.Rel(realRoot, realCandidate); err != nil || outside(rel) {
+		return "", fmt.Errorf("artifact: %s policy must be inside the policy root", kind)
+	}
+	gitRootOutput, err := exec.Command("git", "-C", root, "rev-parse", "--show-toplevel").Output()
+	if err != nil {
+		return "", errors.New("artifact: policy root must be inside a Git worktree")
+	}
+	gitRoot := filepath.Clean(strings.TrimSpace(string(gitRootOutput)))
+	repoRel, err := filepath.Rel(gitRoot, candidate)
+	if err != nil || outside(repoRel) {
+		return "", fmt.Errorf("artifact: %s policy must be inside the Git worktree", kind)
+	}
+	tracked := exec.Command("git", "-C", gitRoot, "ls-files", "--error-unmatch", "--", repoRel)
+	tracked.Stdout = nil
+	tracked.Stderr = nil
+	if err := tracked.Run(); err != nil {
+		return "", fmt.Errorf("artifact: %s policy must be tracked by Git", kind)
+	}
+	return realCandidate, nil
+}
+
+func outside(path string) bool {
+	return path == ".." || strings.HasPrefix(path, ".."+string(filepath.Separator))
 }
 
 func validSeverity(value string) bool {
