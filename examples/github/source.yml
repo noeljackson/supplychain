@@ -1,0 +1,23 @@
+# Replace FULL_COMMIT_SHA with a reviewed 40-character supplychain commit.
+name: supplychain
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "17 7 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: supplychain-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  scan:
+    uses: noeljackson/supplychain/.github/workflows/scan.yml@FULL_COMMIT_SHA
+    with:
+      policy: strict

@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 )
@@ -19,11 +20,11 @@ func Run(target, binDir string) error {
 	if target == "" {
 		return errors.New("workflow: target is required")
 	}
-	hasInputs, err := containsDefinitions(target)
+	definitions, err := definitionPaths(target)
 	if err != nil {
 		return fmt.Errorf("workflow: discover definitions: %w", err)
 	}
-	if !hasInputs {
+	if len(definitions) == 0 {
 		return nil
 	}
 	zizmor, err := locate(binDir)
@@ -32,15 +33,16 @@ func Run(target, binDir string) error {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, zizmor,
+	args := []string{
 		"--offline",
 		"--strict-collection",
 		"--persona=regular",
 		"--min-severity=medium",
 		"--min-confidence=medium",
 		"--format=github",
-		target,
-	)
+	}
+	args = append(args, definitions...)
+	cmd := exec.CommandContext(ctx, zizmor, args...)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
@@ -52,8 +54,8 @@ func Run(target, binDir string) error {
 	return nil
 }
 
-func containsDefinitions(root string) (bool, error) {
-	found := false
+func definitionPaths(root string) ([]string, error) {
+	var definitions []string
 	err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -69,22 +71,25 @@ func containsDefinitions(root string) (bool, error) {
 		}
 		name := strings.ToLower(entry.Name())
 		if name == "action.yml" || name == "action.yaml" {
-			found = true
-			return fs.SkipAll
+			definitions = append(definitions, path)
+			return nil
 		}
 		rel, err := filepath.Rel(root, path)
 		if err != nil {
 			return err
 		}
 		rel = filepath.ToSlash(strings.ToLower(rel))
-		if (strings.HasPrefix(rel, ".github/workflows/") || rel == ".github/dependabot.yml" || rel == ".github/dependabot.yaml") &&
+		if (strings.HasPrefix(rel, ".github/workflows/") ||
+			strings.HasPrefix(rel, ".gitea/workflows/") ||
+			strings.HasPrefix(rel, ".gitea/scoped_workflows/") ||
+			rel == ".github/dependabot.yml" || rel == ".github/dependabot.yaml") &&
 			(strings.HasSuffix(name, ".yml") || strings.HasSuffix(name, ".yaml")) {
-			found = true
-			return fs.SkipAll
+			definitions = append(definitions, path)
 		}
 		return nil
 	})
-	return found, err
+	sort.Strings(definitions)
+	return definitions, err
 }
 
 func locate(binDir string) (string, error) {
