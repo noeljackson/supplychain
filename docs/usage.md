@@ -5,7 +5,8 @@ request, use `supplychain ci --policy=strict` for local parity, and use
 `supplychain image` for an OCI image after it has been built.
 
 See [Recommended GitHub Actions setup](github-actions.md) for complete workflow
-files and repository settings.
+files and repository settings. Gitea users should start with the
+[Gitea Actions guide](gitea-actions.md).
 
 ## Install locally
 
@@ -52,7 +53,7 @@ supplychain --json scan .
 # Redacted secret scan of tracked and non-ignored untracked files
 supplychain secrets .
 
-# Offline GitHub Actions audit
+# Offline GitHub and Gitea Actions audit
 supplychain workflows .
 
 # Generate an SPDX SBOM and fail on high/critical image findings
@@ -64,6 +65,13 @@ supplychain scan-all "$HOME/src"
 # Check the installation and refresh public data/tools
 supplychain doctor
 supplychain update
+```
+
+Generate a pinned caller workflow for either forge:
+
+```bash
+supplychain init github --ref=FULL_COMMIT_SHA
+supplychain init gitea --ref=FULL_COMMIT_SHA
 ```
 
 Commands return nonzero when their enforced policy fails, so they can be used
