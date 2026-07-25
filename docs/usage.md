@@ -89,7 +89,7 @@ Use `strict` in CI. `auto` is useful only as a lower-friction exploratory scan.
 | --- | --- | --- |
 | Known malicious packages and repository indicators | enforced | enforced |
 | Dependency advisories and lockfile drift | reported | enforced |
-| OSV Scanner availability and successful execution | best effort | required |
+| OSV Scanner availability and successful execution | best effort | required; no package sources is `not_applicable` |
 | GitHub Actions audit with zizmor | skipped | enforced |
 | Redacted secret scan with Gitleaks | skipped | enforced |
 | Bun registry verification when target has `bun.lock` | enforced | enforced |
