@@ -15,20 +15,37 @@ func init() {
 	}
 	switch filepath.Base(os.Args[0]) {
 	case "syft":
-		if len(os.Args) < 4 || !strings.HasPrefix(os.Args[3], "spdx-json=") {
+		if len(os.Args) < 6 || os.Args[2] != "--config" || os.Args[4] != "--output" ||
+			!strings.HasPrefix(os.Args[5], "spdx-json=") {
 			os.Exit(9)
+		}
+		config, err := os.ReadFile(os.Args[3])
+		if err != nil || string(config) != "{}\n" {
+			os.Exit(15)
+		}
+		if os.Getenv("SYFT_SELECT_CATALOGERS") != "" || os.Getenv("SYFT_CONFIG") != "" {
+			os.Exit(16)
+		}
+		if logPath := os.Getenv("TEST_SYFT_LOG"); logPath != "" {
+			log := strings.Join(os.Args[1:], " ") + "\nconfig:" + string(config)
+			if err := os.WriteFile(logPath, []byte(log), 0o600); err != nil {
+				os.Exit(17)
+			}
 		}
 		body := `{"spdxVersion":"SPDX-2.3","SPDXID":"SPDXRef-DOCUMENT"}`
 		if os.Getenv("TEST_BAD_SBOM") == "1" {
 			body = `{"not":"spdx"}`
 		}
-		if err := os.WriteFile(strings.TrimPrefix(os.Args[3], "spdx-json="), []byte(body), 0o600); err != nil {
+		if err := os.WriteFile(strings.TrimPrefix(os.Args[5], "spdx-json="), []byte(body), 0o600); err != nil {
 			os.Exit(10)
 		}
 	case "grype":
 		if os.Getenv("GRYPE_DB_REQUIRE_UPDATE_CHECK") != "true" ||
 			os.Getenv("GRYPE_DB_VALIDATE_BY_HASH_ON_START") != "true" {
 			os.Exit(11)
+		}
+		if os.Getenv("GRYPE_CONFIG") != "" || os.Getenv("GRYPE_IGNORES") != "" {
+			os.Exit(18)
 		}
 		log := strings.Join(os.Args[1:], " ")
 		for i, arg := range os.Args[1:] {
@@ -56,12 +73,30 @@ func init() {
 func TestRunGeneratesAndScansExactSBOM(t *testing.T) {
 	bin := t.TempDir()
 	logPath := filepath.Join(t.TempDir(), "grype.log")
+	syftLogPath := filepath.Join(t.TempDir(), "syft.log")
 	linkHelpers(t, bin)
 	t.Setenv("GO_WANT_ARTIFACT_HELPER", "1")
 	t.Setenv("TEST_GRYPE_LOG", logPath)
+	t.Setenv("TEST_SYFT_LOG", syftLogPath)
+	t.Setenv("SYFT_CONFIG", filepath.Join(t.TempDir(), "untrusted.yaml"))
+	t.Setenv("SYFT_SELECT_CATALOGERS", "-*")
+	t.Setenv("GRYPE_CONFIG", filepath.Join(t.TempDir(), "untrusted.yaml"))
+	t.Setenv("GRYPE_IGNORES", "CVE-everything")
+	hostileRepo := t.TempDir()
+	writeArtifactTestFile(t, filepath.Join(hostileRepo, ".syft.yaml"), "select-catalogers: ['-*']\n")
+	writeArtifactTestFile(t, filepath.Join(hostileRepo, ".syft", "config.yaml"), "exclude: ['**']\n")
+	writeArtifactTestFile(t, filepath.Join(hostileRepo, ".grype.yaml"), "ignore: [{vulnerability: '*'}]\n")
+	t.Chdir(hostileRepo)
 	sbom := filepath.Join(t.TempDir(), "result.spdx.json")
 	if err := Run(Options{Image: "example:test", SBOMPath: sbom, FailOn: "high", BinDir: bin}); err != nil {
 		t.Fatal(err)
+	}
+	syftLog, err := os.ReadFile(syftLogPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(syftLog), "--config ") || !strings.Contains(string(syftLog), "config:{}") {
+		t.Fatalf("syft did not use isolated config: %s", syftLog)
 	}
 	got, err := os.ReadFile(logPath)
 	if err != nil {
@@ -121,6 +156,22 @@ func TestRunRejectsUntrackedVEX(t *testing.T) {
 	})
 	if err == nil || !strings.Contains(err.Error(), "must be tracked") {
 		t.Fatalf("expected untracked VEX failure, got %v", err)
+	}
+}
+
+func TestRunRejectsVEXOutsidePolicyRoot(t *testing.T) {
+	root := initArtifactGitTarget(t)
+	outside := filepath.Join(t.TempDir(), "outside.openvex.json")
+	writeArtifactTestFile(t, outside, `{}`)
+	err := Run(Options{
+		Image:      "example:test",
+		SBOMPath:   "out.json",
+		FailOn:     "high",
+		VEXPath:    outside,
+		PolicyRoot: root,
+	})
+	if err == nil || !strings.Contains(err.Error(), "inside") {
+		t.Fatalf("expected outside VEX failure, got %v", err)
 	}
 }
 

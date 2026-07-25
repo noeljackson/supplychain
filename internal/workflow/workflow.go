@@ -14,6 +14,9 @@ import (
 	"time"
 )
 
+// ErrFindings distinguishes workflow-policy findings from analyzer failures.
+var ErrFindings = errors.New("workflow findings")
+
 // Run audits workflow and action definitions beneath target. Network-backed
 // rules are disabled so no GitHub token is exposed to the external analyzer.
 func Run(target, binDir string) error {
@@ -48,6 +51,10 @@ func Run(target, binDir string) error {
 	if err := cmd.Run(); err != nil {
 		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
 			return errors.New("workflow: zizmor audit timed out")
+		}
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) && exitErr.ExitCode() == 1 {
+			return fmt.Errorf("%w: zizmor policy failed", ErrFindings)
 		}
 		return fmt.Errorf("workflow: zizmor policy failed: %w", err)
 	}

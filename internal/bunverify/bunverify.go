@@ -12,6 +12,8 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
+	"path/filepath"
 	"sort"
 	"strings"
 	"time"
@@ -20,6 +22,7 @@ import (
 )
 
 const BaselineVersion = 1
+const maxBaselineSize = 1024 * 1024
 
 type Package struct {
 	Name      string `json:"name"`
@@ -242,37 +245,60 @@ func ParseLockfile(path string) ([]Package, []Issue, error) {
 	if err != nil {
 		return nil, nil, err
 	}
+	return parseLockfile(raw, path)
+}
+
+func parseLockfile(raw []byte, path string) ([]Package, []Issue, error) {
 	raw = stripTrailingCommas(raw)
 	var doc struct {
-		Packages map[string]json.RawMessage `json:"packages"`
+		LockfileVersion int                        `json:"lockfileVersion"`
+		Packages        map[string]json.RawMessage `json:"packages"`
 	}
 	if err := json.Unmarshal(raw, &doc); err != nil {
 		return nil, nil, fmt.Errorf("parse %s: %w", path, err)
 	}
+	if doc.LockfileVersion != 1 {
+		return nil, nil, fmt.Errorf(
+			"parse %s: unsupported Bun lockfile version %d", path, doc.LockfileVersion,
+		)
+	}
+	if doc.Packages == nil {
+		return nil, nil, fmt.Errorf("parse %s: packages object is missing", path)
+	}
 	seen := map[string]struct{}{}
 	var packages []Package
 	var issues []Issue
-	for _, encoded := range doc.Packages {
+	for key, encoded := range doc.Packages {
 		var fields []json.RawMessage
-		if err := json.Unmarshal(encoded, &fields); err != nil || len(fields) == 0 {
-			continue
+		if err := json.Unmarshal(encoded, &fields); err != nil {
+			return nil, nil, fmt.Errorf("parse %s package %q: %w", path, key, err)
+		}
+		if len(fields) == 0 {
+			return nil, nil, fmt.Errorf("parse %s package %q: entry is empty", path, key)
 		}
 		var descriptor string
-		if json.Unmarshal(fields[0], &descriptor) != nil {
-			continue
+		if err := json.Unmarshal(fields[0], &descriptor); err != nil {
+			return nil, nil, fmt.Errorf("parse %s package %q descriptor: %w", path, key, err)
 		}
 		name, version, ok := splitDescriptor(descriptor)
-		if !ok || strings.HasPrefix(version, "workspace:") {
+		if !ok {
+			return nil, nil, fmt.Errorf("parse %s package %q: invalid descriptor %q", path, key, descriptor)
+		}
+		if strings.HasPrefix(version, "workspace:") {
 			continue
+		}
+		if len(fields) < 2 {
+			return nil, nil, fmt.Errorf(
+				"parse %s package %q: non-workspace entry has no source field",
+				path, key,
+			)
 		}
 		label := name + "@" + version
-		if _, ok := seen[label]; ok {
-			continue
-		}
-		seen[label] = struct{}{}
 		var source string
 		if len(fields) > 1 {
-			_ = json.Unmarshal(fields[1], &source)
+			if err := json.Unmarshal(fields[1], &source); err != nil {
+				return nil, nil, fmt.Errorf("parse %s package %q source: %w", path, key, err)
+			}
 		}
 		if source != "" {
 			issues = append(issues, Issue{Code: "non-registry-source", Package: label, Message: "Bun lock entry resolves from " + source})
@@ -280,8 +306,14 @@ func ParseLockfile(path string) ([]Package, []Issue, error) {
 		}
 		var integrity string
 		if len(fields) > 3 {
-			_ = json.Unmarshal(fields[3], &integrity)
+			if err := json.Unmarshal(fields[3], &integrity); err != nil {
+				return nil, nil, fmt.Errorf("parse %s package %q integrity: %w", path, key, err)
+			}
 		}
+		if _, ok := seen[label]; ok {
+			continue
+		}
+		seen[label] = struct{}{}
 		packages = append(packages, Package{Name: name, Version: version, Integrity: integrity})
 	}
 	sort.Slice(packages, func(i, j int) bool {
@@ -289,6 +321,12 @@ func ParseLockfile(path string) ([]Package, []Issue, error) {
 			return packages[i].Version < packages[j].Version
 		}
 		return packages[i].Name < packages[j].Name
+	})
+	sort.Slice(issues, func(i, j int) bool {
+		if issues[i].Package == issues[j].Package {
+			return issues[i].Code < issues[j].Code
+		}
+		return issues[i].Package < issues[j].Package
 	})
 	return packages, issues, nil
 }
@@ -349,6 +387,58 @@ func ReadBaseline(path string) (Baseline, error) {
 		return baseline, fmt.Errorf("unsupported Bun baseline version %d", baseline.Version)
 	}
 	return baseline, nil
+}
+
+// ResolveReviewedBaseline accepts only a small, tracked, regular baseline
+// contained by target. Missing paths are returned unchanged so
+// --write-baseline can create a new review candidate.
+func ResolveReviewedBaseline(target, path string) (string, error) {
+	if path == "" {
+		return "", nil
+	}
+	target, err := filepath.Abs(target)
+	if err != nil {
+		return "", err
+	}
+	candidate := path
+	if !filepath.IsAbs(candidate) {
+		candidate = filepath.Join(target, candidate)
+	}
+	candidate = filepath.Clean(candidate)
+	relative, err := filepath.Rel(target, candidate)
+	if err != nil || relative == ".." || strings.HasPrefix(relative, ".."+string(os.PathSeparator)) {
+		return "", errors.New("Bun baseline must be inside the verification target")
+	}
+	info, err := os.Lstat(candidate)
+	if errors.Is(err, os.ErrNotExist) {
+		return candidate, nil
+	}
+	if err != nil {
+		return "", err
+	}
+	if !info.Mode().IsRegular() {
+		return "", errors.New("Bun baseline must be a regular file, not a symlink")
+	}
+	if info.Size() > maxBaselineSize {
+		return "", fmt.Errorf("Bun baseline exceeds %d bytes", maxBaselineSize)
+	}
+	rootOutput, err := exec.Command("git", "-C", target, "rev-parse", "--show-toplevel").Output()
+	if err != nil {
+		return "", errors.New("Bun baseline requires a Git worktree")
+	}
+	root := strings.TrimSpace(string(rootOutput))
+	repoRelative, err := filepath.Rel(root, candidate)
+	if err != nil || repoRelative == ".." ||
+		strings.HasPrefix(repoRelative, ".."+string(os.PathSeparator)) {
+		return "", errors.New("Bun baseline is outside the Git worktree")
+	}
+	if err := exec.Command(
+		"git", "-C", root, "ls-files", "--error-unmatch", "--",
+		filepath.ToSlash(repoRelative),
+	).Run(); err != nil {
+		return "", errors.New("Bun baseline must be tracked by Git")
+	}
+	return candidate, nil
 }
 
 func WriteBaseline(path string, packages map[string]BaselinePackage) error {

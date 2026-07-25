@@ -32,11 +32,12 @@ jobs:
             --blocked  iocs/blocked-package-names.txt \
             --persistence iocs/persistence-paths.txt \
             --payloads iocs/payload-filenames.txt \
-            --report /tmp/ioc-scrape/report.md \
-          || echo "scrapers reported no new entries"
+            --report /tmp/ioc-scrape/report.md
           echo "::group::scrape report"
-          cat /tmp/ioc-scrape/report.md || echo "(no report written)"
+          cat /tmp/ioc-scrape/report.md
           echo "::endgroup::"
+          python3 scripts/build_ioc_manifest.py \
+            --source-revision="$GITHUB_SHA"
 
       - name: Check for diff
         id: diff
@@ -61,4 +62,5 @@ jobs:
           labels: ioc-refresh
           add-paths: |
             iocs/*.txt
+            iocs/manifest.json
           delete-branch: true

@@ -108,7 +108,7 @@ def existing_lines(path: Path) -> set[str]:
 def append(path: Path, entries: list[str], header: str) -> int:
     """Append unique entries with a dated comment header. Returns count added."""
     have = existing_lines(path)
-    new = [e for e in entries if e not in have]
+    new = [e for e in entries if e.split("#", 1)[0].strip() not in have]
     if not new:
         return 0
     today = dt.date.today().isoformat()
@@ -120,6 +120,107 @@ def append(path: Path, entries: list[str], header: str) -> int:
 
 # ---------- GHSA via the gh CLI ----------
 
+
+class SourceQueryError(RuntimeError):
+    """Threat-intel query failed; this must not be reported as no changes."""
+
+
+def gh_graphql(query: str, **variables):
+    args = ["gh", "api", "graphql", "-f", f"query={query}"]
+    for name, value in variables.items():
+        if value is not None:
+            args.extend(["-F", f"{name}={value}"])
+    try:
+        output = subprocess.run(
+            args, capture_output=True, text=True, check=True, timeout=60,
+        ).stdout
+    except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired) as exc:
+        raise SourceQueryError(f"GHSA query failed: {exc}") from exc
+    try:
+        document = json.loads(output)
+    except json.JSONDecodeError as exc:
+        raise SourceQueryError("GHSA query returned invalid JSON") from exc
+    if document.get("errors"):
+        raise SourceQueryError(f"GHSA query returned errors: {document['errors']}")
+    return document
+
+
+def advisory_vulnerability_pages(ghsa_id: str, cursor: str) -> list[dict]:
+    query = """
+query($ghsaId: String!, $cursor: String!) {
+  securityAdvisory(ghsaId: $ghsaId) {
+    vulnerabilities(first: 100, after: $cursor, ecosystem: NPM) {
+      pageInfo { hasNextPage endCursor }
+      nodes {
+        package { name }
+        vulnerableVersionRange
+      }
+    }
+  }
+}
+"""
+    nodes: list[dict] = []
+    while cursor:
+        document = gh_graphql(query, ghsaId=ghsa_id, cursor=cursor)
+        advisory = document.get("data", {}).get("securityAdvisory") or {}
+        connection = advisory.get("vulnerabilities") or {}
+        nodes.extend(connection.get("nodes") or [])
+        page = connection.get("pageInfo") or {}
+        cursor = page.get("endCursor") if page.get("hasNextPage") else ""
+    return nodes
+
+
+_GHSA_RE = re.compile(r"\bGHSA-[23456789cfghjmpqrvwx]{4}-[23456789cfghjmpqrvwx]{4}-[23456789cfghjmpqrvwx]{4}\b", re.I)
+
+
+def tracked_ghsa_ids(paths: list[Path]) -> set[str]:
+    """Return source advisory IDs recorded in IOC line comments."""
+    ids: set[str] = set()
+    for path in paths:
+        if path.exists():
+            ids.update(match.upper() for match in _GHSA_RE.findall(path.read_text()))
+    return ids
+
+
+def withdrawn_advisories(ids: set[str]) -> set[str]:
+    """Resolve withdrawal state for tracked advisories, failing closed."""
+    query = """
+query($ghsaId: String!) {
+  securityAdvisory(ghsaId: $ghsaId) {
+    ghsaId
+    withdrawnAt
+  }
+}
+"""
+    withdrawn: set[str] = set()
+    for ghsa_id in sorted(ids):
+        document = gh_graphql(query, ghsaId=ghsa_id)
+        advisory = document.get("data", {}).get("securityAdvisory")
+        if advisory is None:
+            raise SourceQueryError(f"tracked advisory {ghsa_id} was not returned by GHSA")
+        if advisory.get("withdrawnAt"):
+            withdrawn.add(ghsa_id)
+    return withdrawn
+
+
+def remove_withdrawn_entries(path: Path, withdrawn: set[str]) -> int:
+    """Remove IOC lines whose recorded source advisories are all withdrawn."""
+    if not path.exists() or not withdrawn:
+        return 0
+    original = path.read_text()
+    kept: list[str] = []
+    removed = 0
+    for raw in original.splitlines():
+        source_ids = {match.upper() for match in _GHSA_RE.findall(raw)}
+        if source_ids and source_ids.issubset(withdrawn):
+            removed += 1
+            continue
+        kept.append(raw)
+    if removed:
+        path.write_text("\n".join(kept).rstrip() + "\n")
+    return removed
+
+
 def ghsa_npm_malware(since_days: int):
     """
     Query GHSA for npm-ecosystem MALWARE advisories published in the last
@@ -129,10 +230,11 @@ def ghsa_npm_malware(since_days: int):
         blocked: list of (name, ghsa_id) — "all versions affected" entries
                   with vulnerableVersionRange ">= 0".
       )
-    Uses the `gh` CLI (assumed authed in the workflow). Falls back to empty
-    on any failure — never raises.
+    Uses the `gh` CLI (assumed authed in the workflow). Source and pagination
+    failures raise SourceQueryError so callers never confuse them with a clean
+    no-change run.
     """
-    cutoff = (dt.datetime.utcnow() - dt.timedelta(days=since_days)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    cutoff = (dt.datetime.now(dt.UTC) - dt.timedelta(days=since_days)).strftime("%Y-%m-%dT%H:%M:%SZ")
     # `withdrawnAt` is fetched explicitly so we can drop retracted entries.
     # We don't use a top-level `withdrawn: false` argument because it isn't a
     # supported field on the securityAdvisories query. Example we were leaking
@@ -140,18 +242,21 @@ def ghsa_npm_malware(since_days: int):
     # @puppeteer/browsers" 3.0.1) was published+retracted same-day, and the
     # legit Google-maintained @puppeteer/browsers ended up on the IOC list.
     query = """
-query($cutoff: DateTime!) {
+query($cutoff: DateTime!, $cursor: String) {
   securityAdvisories(
     first: 100
+    after: $cursor
     classifications: [MALWARE]
     publishedSince: $cutoff
     orderBy: { field: PUBLISHED_AT, direction: DESC }
   ) {
+    pageInfo { hasNextPage endCursor }
     nodes {
       ghsaId
       summary
       withdrawnAt
-      vulnerabilities(first: 50, ecosystem: NPM) {
+      vulnerabilities(first: 100, ecosystem: NPM) {
+        pageInfo { hasNextPage endCursor }
         nodes {
           package { name }
           vulnerableVersionRange
@@ -161,41 +266,39 @@ query($cutoff: DateTime!) {
   }
 }
 """
-    try:
-        out = subprocess.run(
-            ["gh", "api", "graphql",
-             "-f", f"query={query}",
-             "-F", f"cutoff={cutoff}"],
-            capture_output=True, text=True, check=True, timeout=60,
-        ).stdout
-    except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired) as e:
-        print(f"warn: ghsa query failed: {e}", file=sys.stderr)
-        return [], []
-
-    try:
-        doc = json.loads(out)
-    except json.JSONDecodeError:
-        return [], []
-
     pinned: list[tuple[str, str, str]] = []
     blocked: list[tuple[str, str]] = []
-    for adv in doc.get("data", {}).get("securityAdvisories", {}).get("nodes", []) or []:
-        # Belt-and-suspenders: drop withdrawn entries client-side too, even
-        # though the GraphQL filter should have excluded them.
-        if adv.get("withdrawnAt"):
-            continue
-        gid = adv.get("ghsaId", "")
-        for vuln in (adv.get("vulnerabilities") or {}).get("nodes", []) or []:
-            name = (vuln.get("package") or {}).get("name", "")
-            rng  = (vuln.get("vulnerableVersionRange") or "").strip()
-            if not name:
+    withdrawn: set[str] = set()
+    cursor = None
+    while True:
+        doc = gh_graphql(query, cutoff=cutoff, cursor=cursor)
+        connection = doc.get("data", {}).get("securityAdvisories") or {}
+        for adv in connection.get("nodes") or []:
+            gid = adv.get("ghsaId", "")
+            if adv.get("withdrawnAt"):
+                if gid:
+                    withdrawn.add(gid)
                 continue
-            if _ALL_VERSIONS_RE.match(rng):
-                blocked.append((name, gid))
-                continue
-            for ver in versions_from_range(rng):
-                pinned.append((name, ver, gid))
-    return pinned, blocked
+            vulnerabilities = adv.get("vulnerabilities") or {}
+            vuln_nodes = list(vulnerabilities.get("nodes") or [])
+            vuln_page = vulnerabilities.get("pageInfo") or {}
+            if vuln_page.get("hasNextPage") and vuln_page.get("endCursor"):
+                vuln_nodes.extend(advisory_vulnerability_pages(gid, vuln_page["endCursor"]))
+            for vuln in vuln_nodes:
+                name = (vuln.get("package") or {}).get("name", "")
+                rng = (vuln.get("vulnerableVersionRange") or "").strip()
+                if not name:
+                    continue
+                if _ALL_VERSIONS_RE.match(rng):
+                    blocked.append((name, gid))
+                    continue
+                for ver in versions_from_range(rng):
+                    pinned.append((name, ver, gid))
+        page = connection.get("pageInfo") or {}
+        if not page.get("hasNextPage") or not page.get("endCursor"):
+            break
+        cursor = page["endCursor"]
+    return pinned, blocked, withdrawn
 
 
 # Matches the canonical "all versions affected" range emitted by GHSA when a
@@ -231,8 +334,28 @@ def main() -> int:
     args = p.parse_args()
 
     summary: list[str] = ["# IOC refresh report", ""]
+    args.report.parent.mkdir(parents=True, exist_ok=True)
 
-    pinned, blocked = ghsa_npm_malware(since_days=args.since_days)
+    try:
+        pinned, blocked, recently_withdrawn = ghsa_npm_malware(
+            since_days=args.since_days,
+        )
+        tracked = tracked_ghsa_ids([args.packages, args.blocked])
+        withdrawn = recently_withdrawn | withdrawn_advisories(tracked)
+    except SourceQueryError as exc:
+        summary.extend([
+            "## Refresh failed",
+            "",
+            f"The GHSA source could not be queried completely: `{exc}`",
+            "",
+            "No IOC files were changed.",
+        ])
+        args.report.write_text("\n".join(summary) + "\n")
+        print(str(exc), file=sys.stderr)
+        return 2
+
+    removed_pkg = remove_withdrawn_entries(args.packages, withdrawn)
+    removed_block = remove_withdrawn_entries(args.blocked, withdrawn)
 
     # Pre-resolve npm status for every distinct package name being added, with
     # bounded concurrency so we don't hammer the registry.
@@ -245,53 +368,70 @@ def main() -> int:
     )
 
     # 1) concrete-version pins → iocs/packages.txt
-    pkg_entries = sorted({f"{n}@{v}" for (n, v, _) in pinned})
+    pkg_sources: dict[str, set[str]] = {}
+    for name, version, ghsa_id in pinned:
+        pkg_sources.setdefault(f"{name}@{version}", set()).add(ghsa_id)
+    pkg_entries = [
+        f"{entry} # {','.join(sorted(pkg_sources[entry]))}"
+        for entry in sorted(pkg_sources)
+    ]
     added_pkg = append(
         args.packages, pkg_entries,
         f"GHSA MALWARE advisories — version pins (npm, last {args.since_days}d)",
     )
-    summary.append(f"## packages.txt — +{added_pkg} (out of {len(pinned)} pin entries returned)")
+    summary.append(
+        f"## packages.txt — +{added_pkg}/-{removed_pkg} "
+        f"(out of {len(pinned)} pin entries returned)"
+    )
     summary.append(legend)
     if added_pkg:
         for (n, v, gid) in sorted(set(pinned)):
-            if f"{n}@{v}" in pkg_entries:
+            if f"{n}@{v}" in pkg_sources:
                 icon = _STATUS_ICON.get(statuses.get(n, "unknown"), "?")
                 summary.append(f"- {icon} `{n}@{v}` ([{gid}](https://github.com/advisories/{gid}))")
 
     # 2) all-versions advisories → iocs/blocked-package-names.txt
-    block_entries = sorted({n for (n, _) in blocked})
+    block_sources: dict[str, set[str]] = {}
+    for name, ghsa_id in blocked:
+        block_sources.setdefault(name, set()).add(ghsa_id)
+    block_names = sorted(block_sources)
+    block_entries = [
+        f"{name} # {','.join(sorted(block_sources[name]))}"
+        for name in block_names
+    ]
     added_block = append(
         args.blocked, block_entries,
         f"GHSA MALWARE advisories — all-versions ranges (npm, last {args.since_days}d)",
     )
     summary.append("")
-    summary.append(f"## blocked-package-names.txt — +{added_block} (out of {len(blocked)} all-versions entries)")
+    summary.append(
+        f"## blocked-package-names.txt — +{added_block}/-{removed_block} "
+        f"(out of {len(blocked)} all-versions entries)"
+    )
     summary.append(legend)
     if added_block:
         # Status summary line first, then full per-entry list.
         from collections import Counter
-        counts = Counter(statuses.get(n, "unknown") for n in block_entries)
+        counts = Counter(statuses.get(n, "unknown") for n in block_names)
         summary.append(
             "  status breakdown: "
             + ", ".join(f"{_STATUS_ICON[k]} {k} {v}" for k, v in counts.most_common())
         )
-        per_name_ids = {}
-        for (n, gid) in blocked:
-            per_name_ids.setdefault(n, gid)
-        for n in block_entries:
-            gid = per_name_ids.get(n, "")
+        for n in block_names:
+            gids = sorted(block_sources[n])
+            gid = gids[0]
             icon = _STATUS_ICON.get(statuses.get(n, "unknown"), "?")
-            summary.append(f"- {icon} `{n}` ([{gid}](https://github.com/advisories/{gid}))")
+            links = ", ".join(
+                f"[{source}](https://github.com/advisories/{source})"
+                for source in gids
+            )
+            summary.append(f"- {icon} `{n}` ({links})")
 
     summary.append("")
     summary.append("## persistence-paths.txt — +0 (no scraper wired yet)")
     summary.append("## payload-filenames.txt  — +0 (no scraper wired yet)")
 
-    args.report.parent.mkdir(parents=True, exist_ok=True)
-    args.report.write_text("\n".join(summary))
-
-    if added_pkg == 0 and added_block == 0:
-        return 1  # workflow uses this to short-circuit
+    args.report.write_text("\n".join(summary) + "\n")
     return 0
 
 

@@ -16,6 +16,10 @@ import (
 
 const scanTimeout = 15 * time.Minute
 
+// ErrFindings distinguishes a vulnerability policy hit from an operational
+// scanner failure for the CLI exit-code contract.
+var ErrFindings = errors.New("artifact vulnerability findings")
+
 // Options controls an image scan.
 type Options struct {
 	Image      string
@@ -59,8 +63,22 @@ func Run(opts Options) error {
 	ctx, cancel := context.WithTimeout(context.Background(), scanTimeout)
 	defer cancel()
 
-	syftCmd := exec.CommandContext(ctx, syft, opts.Image, "--output", "spdx-json="+opts.SBOMPath)
-	syftCmd.Env = append(os.Environ(), "SYFT_CHECK_FOR_APP_UPDATE=false")
+	// Syft discovers .syft.yaml and .syft/config.yaml in the current working
+	// directory by default. The working directory belongs to the repository
+	// under review, so always select an explicit empty config and remove SYFT_*
+	// environment overrides. Registry credentials remain available through the
+	// normal container-runtime configuration inherited from the environment.
+	syftConfigPath, cleanupSyftConfig, err := isolatedConfig("syft", "{}\n")
+	if err != nil {
+		return err
+	}
+	defer cleanupSyftConfig()
+	syftCmd := exec.CommandContext(ctx, syft,
+		opts.Image,
+		"--config", syftConfigPath,
+		"--output", "spdx-json="+opts.SBOMPath,
+	)
+	syftCmd.Env = append(withoutPrefix(os.Environ(), "SYFT_"), "SYFT_CHECK_FOR_APP_UPDATE=false")
 	if out, err := syftCmd.CombinedOutput(); err != nil {
 		return commandError("syft", err, out)
 	}
@@ -71,19 +89,11 @@ func Run(opts Options) error {
 	// Always select an isolated, empty config. Without an explicit config,
 	// Grype discovers repository-owned .grype.yaml files, which could silently
 	// weaken the caller's severity gate or add unreviewed ignore rules.
-	grypeConfig, err := os.CreateTemp("", "supplychain-grype-*.yaml")
+	grypeConfigPath, cleanupGrypeConfig, err := isolatedConfig("grype", "ignore: []\n")
 	if err != nil {
-		return fmt.Errorf("artifact: create isolated Grype config: %w", err)
+		return err
 	}
-	grypeConfigPath := grypeConfig.Name()
-	defer os.Remove(grypeConfigPath)
-	if _, err := grypeConfig.WriteString("ignore: []\n"); err != nil {
-		_ = grypeConfig.Close()
-		return fmt.Errorf("artifact: write isolated Grype config: %w", err)
-	}
-	if err := grypeConfig.Close(); err != nil {
-		return fmt.Errorf("artifact: close isolated Grype config: %w", err)
-	}
+	defer cleanupGrypeConfig()
 
 	args := []string{"--config", grypeConfigPath, "sbom:" + opts.SBOMPath, "--fail-on", opts.FailOn}
 	if opts.OnlyFixed {
@@ -93,7 +103,7 @@ func Run(opts Options) error {
 		args = append(args, "--vex", vexPath)
 	}
 	grypeCmd := exec.CommandContext(ctx, grype, args...)
-	grypeCmd.Env = append(os.Environ(),
+	grypeCmd.Env = append(withoutPrefix(os.Environ(), "GRYPE_"),
 		"GRYPE_CHECK_FOR_APP_UPDATE=false",
 		"GRYPE_DB_AUTO_UPDATE=true",
 		"GRYPE_DB_VALIDATE_BY_HASH_ON_START=true",
@@ -106,6 +116,10 @@ func Run(opts Options) error {
 	if err := grypeCmd.Run(); err != nil {
 		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
 			return errors.New("artifact: image scan timed out")
+		}
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) && exitErr.ExitCode() == 1 {
+			return fmt.Errorf("%w: grype policy failed", ErrFindings)
 		}
 		return fmt.Errorf("artifact: grype policy failed: %w", err)
 	}
@@ -181,6 +195,36 @@ func validSeverity(value string) bool {
 	default:
 		return false
 	}
+}
+
+func isolatedConfig(tool, contents string) (string, func(), error) {
+	config, err := os.CreateTemp("", "supplychain-"+tool+"-*.yaml")
+	if err != nil {
+		return "", nil, fmt.Errorf("artifact: create isolated %s config: %w", tool, err)
+	}
+	path := config.Name()
+	cleanup := func() { _ = os.Remove(path) }
+	if _, err := config.WriteString(contents); err != nil {
+		_ = config.Close()
+		cleanup()
+		return "", nil, fmt.Errorf("artifact: write isolated %s config: %w", tool, err)
+	}
+	if err := config.Close(); err != nil {
+		cleanup()
+		return "", nil, fmt.Errorf("artifact: close isolated %s config: %w", tool, err)
+	}
+	return path, cleanup, nil
+}
+
+func withoutPrefix(environment []string, prefix string) []string {
+	clean := make([]string, 0, len(environment))
+	for _, entry := range environment {
+		if strings.HasPrefix(entry, prefix) {
+			continue
+		}
+		clean = append(clean, entry)
+	}
+	return clean
 }
 
 func locate(name, binDir string) (string, error) {

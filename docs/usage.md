@@ -122,11 +122,30 @@ packages, and loss of advertised npm provenance. Review both the lockfile and
 baseline diff in the same pull request. In a monorepository, run the action or
 command once per directory containing a `bun.lock`.
 
+For the general installed-package maintainer check, prefer a deterministic
+repository baseline in CI:
+
+```bash
+supplychain scan --maintainer-baseline=.supplychain/maintainers.json .
+# Review the first-observation findings, then:
+supplychain scan --maintainer-baseline=.supplychain/maintainers.json \
+  --accept-maintainers .
+git add .supplychain/maintainers.json
+```
+
+Without `--maintainer-baseline`, the opt-in `--maintainers` check uses local
+state under the data directory. Neither form advances after a finding unless
+`--accept-maintainers` is explicitly supplied.
+
 ## Secret findings
 
 Gitleaks runs with redaction and analytics disabled. It scans files visible to
 Git: tracked files plus untracked files that are not ignored. Generated
 dependencies, ignored build output, and symlink targets are excluded.
+There is no per-file size exclusion: files above 10 MiB are staged and scanned
+like smaller files. Runtime remains bounded by Gitleaks' ten-minute process
+timeout and the workflow's outer job timeout; a timeout is an operational
+failure, never a clean result. Hard links avoid duplicating large file content.
 
 If a finding is a real credential, rotate or revoke it before doing anything
 else, then remove it from the current tree and relevant history. For a reviewed
@@ -152,6 +171,10 @@ allowlist narrower than the finding it documents.
 
 `supplychain image` makes Syft generate the SPDX inventory and makes Grype scan
 that exact document. The default threshold is `high`.
+Both tools receive explicit isolated configuration, and inherited `SYFT_*` and
+`GRYPE_*` policy variables are removed before execution. Repository and user
+`.syft.yaml`/`.grype.yaml` files therefore do not alter inventory or severity
+policy. Registry credentials remain available through the container runtime.
 
 ```bash
 supplychain image \
@@ -176,6 +199,11 @@ supplychain install-hook claude-sessionstart
 # Sweep home-directory persistence artifacts, histories, and source repos
 supplychain audit-system --git-root="$HOME/src"
 ```
+
+Repository `scan`, `scan-all`, and `ci` results are scoped to their selected
+targets. Host persistence, shell histories, home-directory payloads, and
+cross-repository commit history are checked only by the explicit
+`audit-system` command.
 
 The pre-commit hook is a convenience, not the enforcement boundary. The
 required GitHub check is authoritative because local hooks can be bypassed.

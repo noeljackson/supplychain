@@ -6,6 +6,8 @@ package scripts
 
 import (
 	"encoding/json"
+	"errors"
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -33,7 +35,7 @@ func ScanInstalled(target string) ([]Hit, error) {
 	var nmDirs []string
 	err := filepath.WalkDir(target, func(path string, d fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
-			return nil
+			return fmt.Errorf("walk installed package path %s: %w", path, walkErr)
 		}
 		if !d.IsDir() {
 			return nil
@@ -56,7 +58,7 @@ func ScanInstalled(target string) ([]Hit, error) {
 	for _, nm := range nmDirs {
 		entries, err := os.ReadDir(nm)
 		if err != nil {
-			continue
+			return nil, fmt.Errorf("read node_modules %s: %w", nm, err)
 		}
 		for _, e := range entries {
 			if !e.IsDir() {
@@ -71,39 +73,50 @@ func ScanInstalled(target string) ([]Hit, error) {
 				scopeDir := filepath.Join(nm, name)
 				children, err := os.ReadDir(scopeDir)
 				if err != nil {
-					continue
+					return nil, fmt.Errorf("read package scope %s: %w", scopeDir, err)
 				}
 				for _, c := range children {
 					if !c.IsDir() || strings.HasPrefix(c.Name(), ".") {
 						continue
 					}
-					maybeAdd(filepath.Join(scopeDir, c.Name(), "package.json"), &hits, seen)
+					if err := maybeAdd(filepath.Join(scopeDir, c.Name(), "package.json"), &hits, seen); err != nil {
+						return nil, err
+					}
 				}
 				continue
 			}
-			maybeAdd(filepath.Join(nm, name, "package.json"), &hits, seen)
+			if err := maybeAdd(filepath.Join(nm, name, "package.json"), &hits, seen); err != nil {
+				return nil, err
+			}
 		}
 	}
 	return hits, nil
 }
 
-func maybeAdd(pjPath string, hits *[]Hit, seen map[string]struct{}) {
-	h, ok := readHit(pjPath)
+func maybeAdd(pjPath string, hits *[]Hit, seen map[string]struct{}) error {
+	h, ok, err := readHit(pjPath)
+	if err != nil {
+		return err
+	}
 	if !ok {
-		return
+		return nil
 	}
 	key := h.Name + "@" + h.Version
 	if _, dup := seen[key]; dup {
-		return
+		return nil
 	}
 	seen[key] = struct{}{}
 	*hits = append(*hits, h)
+	return nil
 }
 
-func readHit(path string) (Hit, bool) {
+func readHit(path string) (Hit, bool, error) {
 	raw, err := os.ReadFile(path)
 	if err != nil {
-		return Hit{}, false
+		if errors.Is(err, os.ErrNotExist) {
+			return Hit{}, false, nil
+		}
+		return Hit{}, false, fmt.Errorf("read package manifest %s: %w", path, err)
 	}
 	var pj struct {
 		Name    string            `json:"name"`
@@ -111,10 +124,10 @@ func readHit(path string) (Hit, bool) {
 		Scripts map[string]string `json:"scripts"`
 	}
 	if err := json.Unmarshal(raw, &pj); err != nil {
-		return Hit{}, false
+		return Hit{}, false, fmt.Errorf("parse package manifest %s: %w", path, err)
 	}
 	if len(pj.Scripts) == 0 {
-		return Hit{}, false
+		return Hit{}, false, nil
 	}
 	hooks := make(map[string]string)
 	for _, name := range lifecycle {
@@ -123,7 +136,7 @@ func readHit(path string) (Hit, bool) {
 		}
 	}
 	if len(hooks) == 0 {
-		return Hit{}, false
+		return Hit{}, false, nil
 	}
-	return Hit{Path: path, Name: pj.Name, Version: pj.Version, Hooks: hooks}, true
+	return Hit{Path: path, Name: pj.Name, Version: pj.Version, Hooks: hooks}, true, nil
 }

@@ -6,6 +6,7 @@ package freshness
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/fs"
 	"os"
@@ -48,6 +49,7 @@ func Check(target string, days int, reg *registry.Client) ([]Hit, error) {
 	var wg sync.WaitGroup
 	var mu sync.Mutex
 	var hits []Hit
+	var checkErr error
 
 	for _, d := range deps {
 		d := d
@@ -58,6 +60,9 @@ func Check(target string, days int, reg *registry.Client) ([]Hit, error) {
 			defer func() { <-sem }()
 			p, err := reg.Get(d.Name)
 			if err != nil {
+				mu.Lock()
+				checkErr = errors.Join(checkErr, fmt.Errorf("registry metadata for %s: %w", d.Name, err))
+				mu.Unlock()
 				return
 			}
 			t, ok := p.Time[d.Version]
@@ -79,7 +84,7 @@ func Check(target string, days int, reg *registry.Client) ([]Hit, error) {
 	wg.Wait()
 
 	sort.Slice(hits, func(i, j int) bool { return hits[i].Published.After(hits[j].Published) })
-	return hits, nil
+	return hits, checkErr
 }
 
 func ageHuman(t time.Time) string {
@@ -101,7 +106,7 @@ func walkInstalled(target string) ([]dep, error) {
 	var nmDirs []string
 	err := filepath.WalkDir(target, func(path string, d fs.DirEntry, werr error) error {
 		if werr != nil {
-			return nil
+			return fmt.Errorf("walk installed package path %s: %w", path, werr)
 		}
 		if !d.IsDir() {
 			return nil
@@ -123,7 +128,7 @@ func walkInstalled(target string) ([]dep, error) {
 	for _, nm := range nmDirs {
 		entries, err := os.ReadDir(nm)
 		if err != nil {
-			continue
+			return nil, fmt.Errorf("read node_modules %s: %w", nm, err)
 		}
 		for _, e := range entries {
 			if !e.IsDir() {
@@ -136,41 +141,49 @@ func walkInstalled(target string) ([]dep, error) {
 			if strings.HasPrefix(name, "@") {
 				children, err := os.ReadDir(filepath.Join(nm, name))
 				if err != nil {
-					continue
+					return nil, fmt.Errorf("read package scope %s: %w", filepath.Join(nm, name), err)
 				}
 				for _, c := range children {
 					if !c.IsDir() || strings.HasPrefix(c.Name(), ".") {
 						continue
 					}
-					addDep(filepath.Join(nm, name, c.Name(), "package.json"), &out, seen)
+					if err := addDep(filepath.Join(nm, name, c.Name(), "package.json"), &out, seen); err != nil {
+						return nil, err
+					}
 				}
 				continue
 			}
-			addDep(filepath.Join(nm, name, "package.json"), &out, seen)
+			if err := addDep(filepath.Join(nm, name, "package.json"), &out, seen); err != nil {
+				return nil, err
+			}
 		}
 	}
 	return out, nil
 }
 
-func addDep(pjPath string, out *[]dep, seen map[string]struct{}) {
+func addDep(pjPath string, out *[]dep, seen map[string]struct{}) error {
 	raw, err := os.ReadFile(pjPath)
 	if err != nil {
-		return
+		if errors.Is(err, os.ErrNotExist) {
+			return nil
+		}
+		return fmt.Errorf("read installed package manifest %s: %w", pjPath, err)
 	}
 	var pj struct {
 		Name    string `json:"name"`
 		Version string `json:"version"`
 	}
 	if err := json.Unmarshal(raw, &pj); err != nil {
-		return
+		return fmt.Errorf("parse installed package manifest %s: %w", pjPath, err)
 	}
 	if pj.Name == "" || pj.Version == "" {
-		return
+		return nil
 	}
 	key := pj.Name + "@" + pj.Version
 	if _, dup := seen[key]; dup {
-		return
+		return nil
 	}
 	seen[key] = struct{}{}
 	*out = append(*out, dep{Name: pj.Name, Version: pj.Version})
+	return nil
 }

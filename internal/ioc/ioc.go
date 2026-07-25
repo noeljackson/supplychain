@@ -80,10 +80,10 @@ func LoadList(open OpenFunc, name string) ([]string, error) {
 		return nil, err
 	}
 	defer f.Close()
-	return parseList(f), nil
+	return parseList(f)
 }
 
-func parseList(r io.Reader) []string {
+func parseList(r io.Reader) ([]string, error) {
 	var out []string
 	sc := bufio.NewScanner(r)
 	for sc.Scan() {
@@ -96,5 +96,5 @@ func parseList(r io.Reader) []string {
 		}
 		out = append(out, line)
 	}
-	return out
+	return out, sc.Err()
 }

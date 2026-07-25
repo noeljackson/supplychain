@@ -5,6 +5,9 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+
+	"github.com/noeljackson/supplychain/internal/bunverify"
+	"github.com/noeljackson/supplychain/internal/report"
 )
 
 func cmdCI(g *Globals, args []string) int {
@@ -42,23 +45,36 @@ func cmdCI(g *Globals, args []string) int {
 	abs, err := filepath.Abs(target)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "ci:", err)
-		return 1
+		return report.ExitOperational
 	}
 	if _, err := os.Stat(filepath.Join(abs, "bun.lock")); err != nil {
-		if scanExit != 0 || workflowsExit != 0 || secretsExit != 0 {
-			return 1
-		}
-		return 0
+		return combinedExit(scanExit, workflowsExit, secretsExit)
 	}
 	verifyArgs := []string{fmt.Sprintf("--minimum-age-days=%d", *minimumAge)}
-	baselinePath := filepath.Join(abs, *baseline)
+	baselinePath, baselineErr := bunverify.ResolveReviewedBaseline(abs, *baseline)
+	if baselineErr != nil {
+		fmt.Fprintln(os.Stderr, "ci:", baselineErr)
+		return report.ExitOperational
+	}
 	if _, err := os.Stat(baselinePath); err == nil {
 		verifyArgs = append(verifyArgs, "--baseline="+baselinePath)
 	}
 	verifyArgs = append(verifyArgs, abs)
 	verifyExit := cmdVerifyBun(g, verifyArgs)
-	if scanExit != 0 || workflowsExit != 0 || secretsExit != 0 || verifyExit != 0 {
-		return 1
+	return combinedExit(scanExit, workflowsExit, secretsExit, verifyExit)
+}
+
+func combinedExit(codes ...int) int {
+	result := report.ExitClean
+	for _, code := range codes {
+		if code == report.ExitOperational {
+			return report.ExitOperational
+		}
+		if code == report.ExitUsage {
+			result = report.ExitUsage
+		} else if code == report.ExitFindings && result == report.ExitClean {
+			result = report.ExitFindings
+		}
 	}
-	return 0
+	return result
 }

@@ -63,7 +63,7 @@ func ScanRepo(root string, iocs []ioc.PackageIOC, blockedNames []string, reg *re
 	var hits []ManifestHit
 	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
-			return nil
+			return fmt.Errorf("walk manifest path %s: %w", path, walkErr)
 		}
 		if d.IsDir() {
 			name := d.Name()
@@ -77,7 +77,7 @@ func ScanRepo(root string, iocs []ioc.PackageIOC, blockedNames []string, reg *re
 		}
 		fileHits, err := scanFile(path, index, blocked)
 		if err != nil {
-			return nil // malformed package.json — skip, don't abort scan
+			return fmt.Errorf("scan manifest %s: %w", path, err)
 		}
 		// Enrich range-style hits with the current-install resolution.
 		if reg != nil {

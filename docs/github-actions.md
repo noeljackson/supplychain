@@ -49,6 +49,13 @@ local installation:
 supplychain init github --ref=FULL_COMMIT_SHA
 ```
 
+Also copy [`examples/github/CODEOWNERS`](../examples/github/CODEOWNERS) to
+`.github/CODEOWNERS` and replace `@YOUR-ORG/security` with a visible team that
+has write access. It protects the workflow, CODEOWNERS itself, `.supplychain/`
+advisory and Bun baseline files, and reviewed Gitleaks/release policy. Add any
+repository-specific VEX or scanner configuration paths to the same ownership
+boundary.
+
 Copyable templates are available in
 [`examples/github/source.yml`](../examples/github/source.yml) and
 [`examples/github/image.yml`](../examples/github/image.yml).
@@ -160,15 +167,32 @@ Pair the workflow with these repository settings:
 2. Protect `main` and require the successful `scan` check before merge. Apply
    the rule to administrators too if bypasses are not part of your incident
    procedure.
-3. Restrict which actions may run. Allow GitHub-owned actions and this action;
+3. Under the required-pull-request rule, require review from Code Owners,
+   dismiss stale approvals when new commits are pushed, and require approval
+   of the most recent reviewable push. Restrict who can dismiss reviews.
+4. Restrict which actions may run. Allow GitHub-owned actions and this action;
    continue pinning every third-party `uses:` entry to a full commit SHA.
-4. Require approval for first-time or all outside collaborators before forked
+5. Require approval for first-time or all outside collaborators before forked
    pull-request workflows run.
-5. Let Dependabot or Renovate propose action-SHA updates, but review the source
+6. Let Dependabot or Renovate propose action-SHA updates, but review the source
    diff before merging the new pin.
-6. Prefer GitHub-hosted runners for untrusted pull requests. Do not expose a
+7. Prefer GitHub-hosted runners for untrusted pull requests. Do not expose a
    long-lived self-hosted runner to arbitrary fork code; use disposable,
    isolated runners if self-hosting is required.
+
+### Required-workflow boundary
+
+A required status check defined inside the repository is necessary but not an
+independent policy boundary: the same pull request can edit its workflow to
+keep the check name while weakening what it does. CODEOWNERS plus required,
+fresh code-owner review closes that path for the protected files.
+
+Where your GitHub organization or enterprise plan supports ruleset workflows,
+prefer a required workflow stored in a centrally controlled policy repository.
+Target it at the relevant repositories and branches, roll it out in evaluate
+mode, then make it active. Keep local CODEOWNERS anyway: centrally required
+workflows do not replace review of repository policy inputs and baselines.
+Do not grant broad bypass actors to either ruleset.
 
 ## Trust boundaries
 
@@ -199,3 +223,5 @@ GitHub's own guidance explains the underlying controls:
 - [Secure use of `pull_request_target`](https://docs.github.com/en/enterprise-server%403.17/actions/reference/security/securely-using-pull_request_target)
 - [Workflow concurrency](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/control-workflow-concurrency)
 - [Artifact attestations](https://docs.github.com/en/actions/how-tos/secure-your-work/use-artifact-attestations/use-artifact-attestations)
+- [About code owners](https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners)
+- [Available rules for rulesets](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/available-rules-for-rulesets)

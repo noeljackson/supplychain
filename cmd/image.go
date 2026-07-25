@@ -1,11 +1,13 @@
 package cmd
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"os"
 
 	"github.com/noeljackson/supplychain/internal/artifact"
+	"github.com/noeljackson/supplychain/internal/report"
 )
 
 func cmdImage(g *Globals, args []string) int {
@@ -22,6 +24,12 @@ func cmdImage(g *Globals, args []string) int {
 		fmt.Fprintln(os.Stderr, "usage: supplychain image [--sbom=PATH] [--fail-on=high] [--only-fixed] [--vex=PATH] IMAGE")
 		return 2
 	}
+	switch *failOn {
+	case "negligible", "low", "medium", "high", "critical":
+	default:
+		fmt.Fprintln(os.Stderr, "image: --fail-on must be negligible, low, medium, high, or critical")
+		return report.ExitUsage
+	}
 	if err := artifact.Run(artifact.Options{
 		Image:      fs.Arg(0),
 		SBOMPath:   *sbom,
@@ -32,8 +40,11 @@ func cmdImage(g *Globals, args []string) int {
 		BinDir:     g.BinDir,
 	}); err != nil {
 		fmt.Fprintln(os.Stderr, err)
-		return 1
+		if errors.Is(err, artifact.ErrFindings) {
+			return report.ExitFindings
+		}
+		return report.ExitOperational
 	}
 	fmt.Println("SBOM:", *sbom)
-	return 0
+	return report.ExitClean
 }

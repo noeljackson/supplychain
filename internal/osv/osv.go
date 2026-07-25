@@ -15,6 +15,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strings"
 	"time"
 )
@@ -54,19 +55,29 @@ func Ensure(binDir string) error {
 	return install(binDir)
 }
 
-// PackageVuln is a single (package, version, vuln IDs, source path) finding.
+// Advisory preserves policy-relevant metadata emitted by osv-scanner.
+type Advisory struct {
+	ID            string   `json:"id"`
+	Severity      string   `json:"severity"`
+	FixedVersions []string `json:"fixed_versions"`
+}
+
+// PackageVuln is a single (package, version, advisories, source path) finding.
 type PackageVuln struct {
-	Name       string
-	Version    string
-	Ecosystem  string
-	IDs        []string
-	SourcePath string
+	Name       string     `json:"name"`
+	Version    string     `json:"version"`
+	Ecosystem  string     `json:"ecosystem"`
+	IDs        []string   `json:"ids"`
+	Advisories []Advisory `json:"advisories"`
+	SourcePath string     `json:"source_path"`
 }
 
 // ErrNoPackageSources means the scanner ran successfully enough to determine
 // that the target contains no supported dependency manifests or lockfiles.
 // This is not a coverage failure for a docs-only repository.
 var ErrNoPackageSources = errors.New("no package sources found")
+
+var scanTimeout = 120 * time.Second
 
 // Scan runs osv-scanner against target and returns parsed findings.
 // Returns (nil, nil) if osv-scanner is unavailable — that's an expected
@@ -77,7 +88,7 @@ func Scan(binDir, target string) ([]PackageVuln, error) {
 		return nil, nil
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), scanTimeout)
 	defer cancel()
 
 	// osv-scanner v2 changed the CLI to `osv-scanner scan source`; older
@@ -86,19 +97,25 @@ func Scan(binDir, target string) ([]PackageVuln, error) {
 	cmd := exec.CommandContext(ctx, path, args...)
 	out, err := cmd.Output()
 	if err != nil {
+		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			return nil, errors.New("osv-scanner timed out")
+		}
 		if isNoPackageSources(err) {
 			return nil, ErrNoPackageSources
 		}
 		// Exit code 1 means findings — that's expected; only re-run on usage error.
 		var exitErr *exec.ExitError
-		if !errors.As(err, &exitErr) || exitErr.ExitCode() > 1 {
+		if !errors.As(err, &exitErr) || exitErr.ExitCode() != 1 {
 			cmd = exec.CommandContext(ctx, path, "--recursive", "--format", "json", target)
 			out, err = cmd.Output()
 			if err != nil {
+				if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+					return nil, errors.New("osv-scanner timed out")
+				}
 				if isNoPackageSources(err) {
 					return nil, ErrNoPackageSources
 				}
-				if !errors.As(err, &exitErr) || exitErr.ExitCode() > 1 {
+				if !errors.As(err, &exitErr) || exitErr.ExitCode() != 1 {
 					return nil, fmt.Errorf("osv-scanner failed: %w", err)
 				}
 			}
@@ -130,7 +147,17 @@ func parse(b []byte) ([]PackageVuln, error) {
 					Ecosystem string `json:"ecosystem"`
 				} `json:"package"`
 				Vulnerabilities []struct {
-					ID string `json:"id"`
+					ID               string `json:"id"`
+					DatabaseSpecific struct {
+						Severity string `json:"severity"`
+					} `json:"database_specific"`
+					Affected []struct {
+						Ranges []struct {
+							Events []struct {
+								Fixed string `json:"fixed"`
+							} `json:"events"`
+						} `json:"ranges"`
+					} `json:"affected"`
 				} `json:"vulnerabilities"`
 			} `json:"packages"`
 		} `json:"results"`
@@ -148,18 +175,57 @@ func parse(b []byte) ([]PackageVuln, error) {
 				continue
 			}
 			ids := make([]string, 0, len(p.Vulnerabilities))
+			advisories := make([]Advisory, 0, len(p.Vulnerabilities))
 			for _, v := range p.Vulnerabilities {
 				ids = append(ids, v.ID)
+				fixedSet := make(map[string]struct{})
+				for _, affected := range v.Affected {
+					for _, affectedRange := range affected.Ranges {
+						for _, event := range affectedRange.Events {
+							if event.Fixed != "" {
+								fixedSet[event.Fixed] = struct{}{}
+							}
+						}
+					}
+				}
+				fixed := make([]string, 0, len(fixedSet))
+				for version := range fixedSet {
+					fixed = append(fixed, version)
+				}
+				sort.Strings(fixed)
+				severity := strings.ToLower(v.DatabaseSpecific.Severity)
+				if severity == "" {
+					severity = "unknown"
+				}
+				advisories = append(advisories, Advisory{
+					ID:            v.ID,
+					Severity:      severity,
+					FixedVersions: fixed,
+				})
 			}
+			sort.Strings(ids)
+			sort.Slice(advisories, func(i, j int) bool {
+				return advisories[i].ID < advisories[j].ID
+			})
 			out = append(out, PackageVuln{
 				Name:       p.Package.Name,
 				Version:    p.Package.Version,
 				Ecosystem:  p.Package.Ecosystem,
 				IDs:        ids,
+				Advisories: advisories,
 				SourcePath: r.Source.Path,
 			})
 		}
 	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].SourcePath != out[j].SourcePath {
+			return out[i].SourcePath < out[j].SourcePath
+		}
+		if out[i].Name != out[j].Name {
+			return out[i].Name < out[j].Name
+		}
+		return out[i].Version < out[j].Version
+	})
 	return out, nil
 }
 
