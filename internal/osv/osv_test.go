@@ -12,7 +12,21 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
+
+func init() {
+	if os.Getenv("GO_WANT_OSV_TIMEOUT_HELPER") != "1" ||
+		filepath.Base(os.Args[0]) != "osv-scanner" {
+		return
+	}
+	if len(os.Args) > 1 && os.Args[1] == "--version" {
+		fmt.Println("osv-scanner timeout fixture 1.0.0")
+		os.Exit(0)
+	}
+	time.Sleep(time.Second)
+	os.Exit(0)
+}
 
 func TestNoPackageSourcesExitIsRecognized(t *testing.T) {
 	err := &exec.ExitError{Stderr: []byte("No package sources found, --help for usage information.\n")}
@@ -80,4 +94,68 @@ func TestLocatePrefersManagedBinDir(t *testing.T) {
 	if path != filepath.Join(managed, "osv-scanner") {
 		t.Fatalf("managed tool did not win: %s", path)
 	}
+}
+
+func TestScanReportsTimeoutAsOperationalFailure(t *testing.T) {
+	binDir := t.TempDir()
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(executable, filepath.Join(binDir, "osv-scanner")); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("GO_WANT_OSV_TIMEOUT_HELPER", "1")
+	previousTimeout := scanTimeout
+	scanTimeout = 20 * time.Millisecond
+	t.Cleanup(func() { scanTimeout = previousTimeout })
+
+	if _, err := Scan(binDir, t.TempDir()); err == nil ||
+		!strings.Contains(err.Error(), "timed out") {
+		t.Fatalf("expected explicit timeout failure, got %v", err)
+	}
+}
+
+func TestParsePreservesSeverityAndFixMetadata(t *testing.T) {
+	body := []byte(`{
+	  "results": [{
+	    "source": {"path": "package-lock.json"},
+	    "packages": [{
+	      "package": {"name": "demo", "version": "1.0.0", "ecosystem": "npm"},
+	      "vulnerabilities": [{
+	        "id": "GHSA-demo",
+	        "database_specific": {"severity": "HIGH"},
+	        "affected": [{"ranges": [{"events": [
+	          {"introduced": "0"}, {"fixed": "1.2.0"}, {"fixed": "1.1.0"}
+	        ]}]}]
+	      }]
+	    }]
+	  }]
+	}`)
+	hits, err := parse(body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(hits) != 1 || len(hits[0].Advisories) != 1 {
+		t.Fatalf("unexpected findings: %+v", hits)
+	}
+	advisory := hits[0].Advisories[0]
+	if advisory.Severity != "high" {
+		t.Fatalf("severity = %q", advisory.Severity)
+	}
+	if strings.Join(advisory.FixedVersions, ",") != "1.1.0,1.2.0" {
+		t.Fatalf("fixed versions = %v", advisory.FixedVersions)
+	}
+}
+
+func FuzzParseOSVOutput(f *testing.F) {
+	f.Add([]byte(`{"results":[]}`))
+	f.Add([]byte(`{"results":[{"source":{"path":"package-lock.json"},"packages":[{"package":{"name":"demo","version":"1.0.0","ecosystem":"npm"},"vulnerabilities":[{"id":"GHSA-demo"}]}]}]}`))
+	f.Add([]byte(`{`))
+	f.Fuzz(func(t *testing.T, body []byte) {
+		if len(body) > 2*1024*1024 {
+			t.Skip()
+		}
+		_, _ = parse(body)
+	})
 }

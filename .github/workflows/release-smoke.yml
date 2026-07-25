@@ -34,7 +34,7 @@ jobs:
       - name: Brew install via tap
         run: |
           brew tap noeljackson/tap
-          brew install supplychain
+          brew install --cask supplychain
 
       - name: supplychain version (must match the released tag)
         env:

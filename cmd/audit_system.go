@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/noeljackson/supplychain/internal/audit"
+	"github.com/noeljackson/supplychain/internal/report"
 )
 
 func cmdAuditSystem(g *Globals, args []string) int {
@@ -18,48 +19,84 @@ func cmdAuditSystem(g *Globals, args []string) int {
 	}
 
 	gitRoot := filepath.Join(home, "src")
+	unsafeHistory := false
 	for _, a := range args {
 		switch {
 		case strings.HasPrefix(a, "--git-root="):
 			gitRoot = strings.TrimPrefix(a, "--git-root=")
+		case a == "--unsafe-history-context":
+			unsafeHistory = true
+		default:
+			fmt.Fprintln(os.Stderr, "usage: supplychain audit-system [--git-root=PATH]")
+			return report.ExitUsage
 		}
 	}
 
 	findings, err := audit.Run(audit.Options{
-		OpenIOC:      g.OpenIOC,
-		HomeDir:      home,
-		HistoryFiles: audit.DefaultHistoryFiles(home),
-		GitRoot:      gitRoot,
+		OpenIOC:              g.OpenIOC,
+		HomeDir:              home,
+		HistoryFiles:         audit.DefaultHistoryFiles(home),
+		GitRoot:              gitRoot,
+		UnsafeHistoryContext: unsafeHistory,
 	})
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "audit error:", err)
-		return 1
+		return report.ExitOperational
 	}
 
 	if g.JSON {
 		enc := json.NewEncoder(os.Stdout)
 		enc.SetIndent("", "  ")
 		_ = enc.Encode(struct {
-			HasHits  bool           `json:"has_hits"`
+			SchemaVersion int                    `json:"schema_version"`
+			Command       string                 `json:"command"`
+			Scanner       report.ScannerIdentity `json:"scanner"`
+			Outcome       struct {
+				Status     string `json:"status"`
+				ExitCode   int    `json:"exit_code"`
+				HasHits    bool   `json:"has_findings"`
+				Incomplete bool   `json:"incomplete"`
+			} `json:"outcome"`
 			Findings audit.Findings `json:"findings"`
-		}{findings.HasHits(), findings})
-		if findings.HasHits() {
-			return 1
+		}{
+			SchemaVersion: report.SchemaVersion,
+			Command:       "audit-system",
+			Scanner:       report.ScannerIdentity{Name: "supplychain", Version: Version},
+			Outcome: struct {
+				Status     string `json:"status"`
+				ExitCode   int    `json:"exit_code"`
+				HasHits    bool   `json:"has_findings"`
+				Incomplete bool   `json:"incomplete"`
+			}{
+				Status:     auditOutcome(findings),
+				ExitCode:   auditExitCode(findings),
+				HasHits:    findings.HasHits(),
+				Incomplete: findings.HasCoverageGaps(),
+			},
+			Findings: findings,
+		})
+		if findings.HasCoverageGaps() {
+			return report.ExitOperational
 		}
-		return 0
+		if findings.HasHits() {
+			return report.ExitFindings
+		}
+		return report.ExitClean
 	}
 
-	if !findings.HasHits() {
+	if !findings.HasHits() && !findings.HasCoverageGaps() {
 		if !g.Quiet {
 			fmt.Printf("ok  system audit clean — scanned %d history files, %d git repos under %s\n",
-				len(findings.HistoryFiles), findings.ReposScanned, gitRoot)
+				findings.CompletedHistories(), findings.CompletedRepositories(), gitRoot)
 		}
 		return 0
 	}
 
-	fmt.Printf("err system audit found %d category hits\n",
-		boolToInt(len(findings.C2Hits) > 0)+boolToInt(len(findings.CommitHits) > 0)+
-			boolToInt(len(findings.Payloads) > 0)+boolToInt(len(findings.Persistence) > 0))
+	if findings.HasHits() {
+		fmt.Printf("err system audit found %d category hits\n",
+			boolToInt(len(findings.C2Hits) > 0)+boolToInt(len(findings.CommitHits) > 0)+
+				boolToInt(len(findings.Payloads) > 0)+boolToInt(len(findings.Persistence) > 0))
+	}
 
 	if len(findings.Persistence) > 0 {
 		fmt.Println()
@@ -79,7 +116,10 @@ func cmdAuditSystem(g *Globals, args []string) int {
 		fmt.Println()
 		fmt.Println("C2 domains in shell history:")
 		for _, h := range findings.C2Hits {
-			fmt.Printf("  %s — %s\n    %s: %s\n", h.Domain, h.File, h.Domain, truncate(h.Line, 140))
+			fmt.Printf("  %s — %s:%d\n    %s\n", h.Domain, h.File, h.LineNumber, h.Context)
+			if unsafeHistory && h.FullLine != "" {
+				fmt.Printf("    unsafe full line: %s\n", truncate(h.FullLine, 140))
+			}
 		}
 	}
 	if len(findings.CommitHits) > 0 {
@@ -90,7 +130,47 @@ func cmdAuditSystem(g *Globals, args []string) int {
 				c.Repo, c.Commit[:min(12, len(c.Commit))], c.Author, c.Subject)
 		}
 	}
-	return 1
+	renderAuditCoverage(findings)
+	if findings.HasCoverageGaps() {
+		return report.ExitOperational
+	}
+	return report.ExitFindings
+}
+
+func auditExitCode(findings audit.Findings) int {
+	if findings.HasCoverageGaps() {
+		return report.ExitOperational
+	}
+	if findings.HasHits() {
+		return report.ExitFindings
+	}
+	return report.ExitClean
+}
+
+func auditOutcome(findings audit.Findings) string {
+	switch auditExitCode(findings) {
+	case report.ExitOperational:
+		return "incomplete"
+	case report.ExitFindings:
+		return "findings"
+	default:
+		return "clean"
+	}
+}
+
+func renderAuditCoverage(findings audit.Findings) {
+	if !findings.HasCoverageGaps() {
+		return
+	}
+	fmt.Println()
+	fmt.Println("Forensic coverage incomplete:")
+	statuses := append(append([]audit.TargetStatus{}, findings.Histories...), findings.Repositories...)
+	statuses = append(statuses, findings.PayloadRoots...)
+	for _, status := range statuses {
+		if status.Status == "failed" {
+			fmt.Printf("  %s — %s\n", status.Path, status.Diagnostic)
+		}
+	}
 }
 
 func boolToInt(b bool) int {

@@ -1,9 +1,11 @@
 # supplychain
 
-`supplychain` is a read-only repository and dependency scanner. It detects
-known malicious packages, lockfile drift, install hooks, persistence artifacts,
-maintainer changes, fresh npm releases, and strict Bun registry metadata without
-executing code from the repository being inspected.
+`supplychain` is a read-only repository, dependency, and opt-in host-forensics
+scanner. Repository scans detect known malicious packages, lockfile drift,
+install hooks, dropped payloads, maintainer changes, fresh npm releases, and
+strict Bun registry metadata without executing code from the repository being
+inspected. Host persistence and shell-history checks are isolated under
+`audit-system`, so repository findings stay scoped to the selected target.
 
 ## Start here
 
@@ -96,9 +98,10 @@ installed from cooldown-aged, immutable releases whose expected SHA-256 hashes
 live in this repository. Strict source scans fail if OSV Scanner is absent or
 fails. A target with no supported package sources is reported as
 `not_applicable`, not as lost coverage. Image scans require a fresh, hash-valid
-Grype database and a successful update check. Image scans always use an
-isolated empty Grype config, so a
-repository cannot silently weaken the gate with `.grype.yaml`. A reviewed,
+Grype database and a successful update check. Image scans always use isolated
+explicit Syft and Grype configs and scrub their configuration environment
+variables, so a repository cannot weaken inventory with `.syft.yaml` or the
+gate with `.grype.yaml`. A reviewed,
 tracked OpenVEX document may be selected explicitly with `vex`; untracked,
 external, oversized, and symlinked policy files are rejected.
 

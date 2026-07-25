@@ -1,0 +1,4 @@
+lockfileVersion: '9.0'
+packages:
+  safe-action@0.8.4:
+    resolution: {integrity: sha512-fixture}

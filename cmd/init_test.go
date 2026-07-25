@@ -3,6 +3,7 @@ package cmd
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -19,6 +20,7 @@ func TestInitGitHubWritesHardenedWorkflow(t *testing.T) {
 		t.Fatal(err)
 	}
 	workflow := string(contents)
+	assertWorkflowSnapshot(t, "testdata/github-workflow.golden.yml", contents)
 	for _, want := range []string{
 		"pull_request:",
 		"branches: [main]",
@@ -61,6 +63,7 @@ func TestInitGiteaWritesHardenedWorkflow(t *testing.T) {
 		t.Fatal(err)
 	}
 	workflow := string(contents)
+	assertWorkflowSnapshot(t, "testdata/gitea-workflow.golden.yml", contents)
 	for _, want := range []string{
 		"pull_request:",
 		"branches: [main]",
@@ -79,5 +82,20 @@ func TestInitGiteaWritesHardenedWorkflow(t *testing.T) {
 		if strings.Contains(workflow, forbidden) {
 			t.Errorf("generated workflow contains unsafe setting %q", forbidden)
 		}
+	}
+}
+
+func assertWorkflowSnapshot(t *testing.T, path string, actual []byte) {
+	t.Helper()
+	_, sourceFile, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("resolve test source path")
+	}
+	expected, err := os.ReadFile(filepath.Join(filepath.Dir(sourceFile), path))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(actual) != string(expected) {
+		t.Fatalf("governance-sensitive workflow snapshot changed:\n--- got ---\n%s\n--- want ---\n%s", actual, expected)
 	}
 }

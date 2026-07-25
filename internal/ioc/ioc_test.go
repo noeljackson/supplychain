@@ -43,7 +43,10 @@ foo
 # inline section
 baz # trailing
 `
-	got := parseList(strings.NewReader(in))
+	got, err := parseList(strings.NewReader(in))
+	if err != nil {
+		t.Fatal(err)
+	}
 	want := []string{"foo", "bar", "baz"}
 	if len(got) != len(want) {
 		t.Fatalf("got %v, want %v", got, want)
@@ -70,4 +73,16 @@ func TestExpandPath(t *testing.T) {
 			t.Errorf("expand(%q) = %q, want %q", c.in, got, c.want)
 		}
 	}
+}
+
+func FuzzIOCParsers(f *testing.F) {
+	f.Add("safe-action@0.8.4\n@scope/pkg@1.2.3 # source\n", "domain.example\n")
+	f.Add("@@@\n", strings.Repeat("x", 1024*1024+1))
+	f.Fuzz(func(t *testing.T, packages, list string) {
+		if len(packages)+len(list) > 2*1024*1024 {
+			t.Skip()
+		}
+		_, _ = parsePackages(strings.NewReader(packages))
+		_, _ = parseList(strings.NewReader(list))
+	})
 }

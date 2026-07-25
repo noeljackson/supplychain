@@ -2,6 +2,7 @@ package secrets
 
 import (
 	"context"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -36,6 +37,15 @@ func init() {
 	if err := os.WriteFile(os.Getenv("TEST_GITLEAKS_LOG"), []byte(contents), 0o600); err != nil {
 		os.Exit(14)
 	}
+	if expected := os.Getenv("TEST_GITLEAKS_EXPECT_FILE"); expected != "" {
+		body, err := os.ReadFile(expected)
+		if err != nil {
+			os.Exit(15)
+		}
+		if strings.Contains(string(body), "SECRET_FIXTURE_MARKER") {
+			os.Exit(1)
+		}
+	}
 	if code, _ := strconv.Atoi(os.Getenv("TEST_GITLEAKS_EXIT")); code != 0 {
 		os.Exit(code)
 	}
@@ -67,8 +77,6 @@ func TestRunUsesPinnedFlags(t *testing.T) {
 		"--redact",
 		"--log-level",
 		"warn",
-		"--max-target-megabytes",
-		"10",
 		"--exit-code",
 		"1",
 		"GITLEAKS_ENABLE_ANALYTICS=false",
@@ -81,6 +89,87 @@ func TestRunUsesPinnedFlags(t *testing.T) {
 		if strings.Contains(text, forbidden) {
 			t.Fatalf("fake gitleaks log contains untrusted config %q:\n%s", forbidden, text)
 		}
+	}
+	if strings.Contains(text, "--max-target-megabytes") {
+		t.Fatalf("strict scan must not silently skip large files:\n%s", text)
+	}
+}
+
+func TestStageGitVisibleIncludesLargeGitVisibleFile(t *testing.T) {
+	target := initGitTarget(t)
+	path := filepath.Join(target, "large.bin")
+	file, err := os.Create(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := file.Truncate(11 * 1024 * 1024); err != nil {
+		_ = file.Close()
+		t.Fatal(err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatal(err)
+	}
+	gitAdd(t, target, "large.bin")
+
+	scanRoot, cleanup, err := stageGitVisible(context.Background(), target, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cleanup()
+	info, err := os.Stat(filepath.Join(scanRoot, "large.bin"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Size() != 11*1024*1024 {
+		t.Fatalf("large staged file size = %d", info.Size())
+	}
+}
+
+func TestRunDetectsRedactedFixtureBelowAndAboveTenMiB(t *testing.T) {
+	for _, testCase := range []struct {
+		name string
+		size int64
+	}{
+		{name: "small", size: 1024},
+		{name: "large", size: 11 * 1024 * 1024},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			binDir := t.TempDir()
+			logPath := filepath.Join(t.TempDir(), "gitleaks.log")
+			writeFakeGitleaks(t, binDir, logPath, 0)
+			target := initGitTarget(t)
+			path := filepath.Join(target, "credential.txt")
+			file, err := os.Create(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := file.WriteString("SECRET_FIXTURE_MARKER\n"); err != nil {
+				_ = file.Close()
+				t.Fatal(err)
+			}
+			if err := file.Truncate(testCase.size); err != nil {
+				_ = file.Close()
+				t.Fatal(err)
+			}
+			if err := file.Close(); err != nil {
+				t.Fatal(err)
+			}
+			gitAdd(t, target, "credential.txt")
+			// The staging directory is randomized. The helper receives its
+			// working directory, so pass only the relative fixture name.
+			t.Setenv("TEST_GITLEAKS_EXPECT_FILE", "credential.txt")
+			err = Run(target, binDir, "")
+			if !errors.Is(err, ErrFindings) {
+				t.Fatalf("expected redacted finding for %d-byte fixture, got %v", testCase.size, err)
+			}
+			logBody, readErr := os.ReadFile(logPath)
+			if readErr != nil {
+				t.Fatal(readErr)
+			}
+			if strings.Contains(string(logBody), "SECRET_FIXTURE_MARKER") {
+				t.Fatal("secret fixture leaked into scanner log")
+			}
+		})
 	}
 }
 

@@ -10,6 +10,8 @@ import (
 	"runtime/debug"
 	"strconv"
 	"strings"
+
+	"github.com/noeljackson/supplychain/internal/report"
 )
 
 // Version is resolved (in priority order) from:
@@ -49,8 +51,16 @@ type Globals struct {
 	Signatures bool
 
 	// Maintainers enables the maintainer-change check. Set via --maintainers.
-	// First run establishes a baseline silently.
 	Maintainers bool
+
+	// AcceptMaintainers explicitly writes current maintainer sets after review.
+	AcceptMaintainers bool
+
+	// MaintainerBaseline is a deterministic tracked baseline within the target.
+	MaintainerBaseline string
+
+	// SourcePolicy is a tracked advisory policy path within the scan target.
+	SourcePolicy string
 
 	// TyposquatDistance overrides the default Levenshtein threshold (1).
 	// Distance 2 catches double-typos but pulls in false positives like
@@ -85,7 +95,7 @@ func Run(defaultIOCs embed.FS) int {
 
 	if err := initPaths(g); err != nil {
 		fmt.Fprintln(os.Stderr, "error:", err)
-		return 1
+		return report.ExitOperational
 	}
 
 	switch cmd {
@@ -153,6 +163,14 @@ func parseGlobalFlags(g *Globals, args []string) []string {
 			g.Signatures = true
 		case a == "--maintainers":
 			g.Maintainers = true
+		case a == "--accept-maintainers":
+			g.Maintainers = true
+			g.AcceptMaintainers = true
+		case strings.HasPrefix(a, "--maintainer-baseline="):
+			g.Maintainers = true
+			g.MaintainerBaseline = strings.TrimPrefix(a, "--maintainer-baseline=")
+		case strings.HasPrefix(a, "--source-policy="):
+			g.SourcePolicy = strings.TrimPrefix(a, "--source-policy=")
 		case strings.HasPrefix(a, "--typosquat-distance="):
 			if n, err := strconv.Atoi(strings.TrimPrefix(a, "--typosquat-distance=")); err == nil && n > 0 {
 				g.TyposquatDistance = n
@@ -212,9 +230,11 @@ commands:
                         anywhere under $HOME, C2 domains in shell history,
                         dead-drop commit signatures across all git repos.
                         Flags: --git-root=PATH (default ~/src)
+                        --unsafe-history-context (may print command secrets)
   update                refresh IOC data and osv-scanner
   install-hook <kind>   install integration hook: claude-sessionstart | pre-commit
-  doctor                check install health
+  doctor                check install health; optional --profile=source|strict|
+                        image|workflows|secrets
   version               print version
   help                  show this
 
@@ -232,10 +252,14 @@ flags (may appear anywhere):
   --freshness-days=N    custom freshness window (implies --freshness)
   --signatures          run 'npm audit signatures' for projects with
                         a package-lock.json (requires npm on PATH)
-  --maintainers         track maintainer-set changes per package. First run
-                        establishes a baseline silently; subsequent runs
-                        flag deltas (queries npm registry; baseline persists
-                        under DataDir/maintainers/)
+  --maintainers         report maintainer-set changes and missing baselines
+                        (queries npm registry; baseline persists under
+                        DataDir/maintainers/)
+  --accept-maintainers  explicitly accept current maintainer sets
+  --maintainer-baseline=PATH
+                        deterministic tracked maintainer baseline for CI
+  --source-policy=PATH  tracked advisory policy within the scan target
+                        (default: .supplychain/source-policy.json when present)
   --typosquat-distance=N  override the typosquat edit-distance threshold
                           (default 1 — unambiguous single-typo squats only)
 

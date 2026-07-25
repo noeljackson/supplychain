@@ -1,6 +1,21 @@
 package npmsig
 
-import "testing"
+import (
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
+)
+
+func init() {
+	if os.Getenv("GO_WANT_NPM_TIMEOUT_HELPER") != "1" ||
+		filepath.Base(os.Args[0]) != "npm" {
+		return
+	}
+	time.Sleep(time.Second)
+	os.Exit(0)
+}
 
 func TestParse_Empty(t *testing.T) {
 	hits, err := parse(nil)
@@ -47,13 +62,44 @@ func TestParse_InvalidAndMissing(t *testing.T) {
 	}
 }
 
-func TestParse_GracefulOnNonJSON(t *testing.T) {
-	// Some npm versions print a text summary even with --json. We tolerate that.
-	hits, err := parse([]byte("some text not actually json"))
+func TestParseRejectsNonJSON(t *testing.T) {
+	if _, err := parse([]byte("some text not actually json")); err == nil {
+		t.Fatal("expected malformed JSON error")
+	}
+}
+
+func TestRunReportsTimeoutAsOperationalFailure(t *testing.T) {
+	binDir := t.TempDir()
+	executable, err := os.Executable()
 	if err != nil {
-		t.Errorf("non-JSON should not error, got %v", err)
+		t.Fatal(err)
 	}
-	if hits != nil {
-		t.Errorf("expected nil hits on non-JSON, got %v", hits)
+	if err := os.Symlink(executable, filepath.Join(binDir, "npm")); err != nil {
+		t.Fatal(err)
 	}
+	target := t.TempDir()
+	if err := os.WriteFile(filepath.Join(target, "package-lock.json"), []byte(`{}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", binDir)
+	t.Setenv("GO_WANT_NPM_TIMEOUT_HELPER", "1")
+	previousTimeout := auditTimeout
+	auditTimeout = 20 * time.Millisecond
+	t.Cleanup(func() { auditTimeout = previousTimeout })
+
+	if _, err := Run(target); err == nil || !strings.Contains(err.Error(), "timed out") {
+		t.Fatalf("expected explicit timeout failure, got %v", err)
+	}
+}
+
+func FuzzParseExternalToolOutput(f *testing.F) {
+	f.Add([]byte(`{"invalid":[],"missing":[]}`))
+	f.Add([]byte(`{"invalid":[{"name":"x","version":"1.0.0"}]}`))
+	f.Add([]byte(`{`))
+	f.Fuzz(func(t *testing.T, body []byte) {
+		if len(body) > 1024*1024 {
+			t.Skip()
+		}
+		_, _ = parse(body)
+	})
 }
