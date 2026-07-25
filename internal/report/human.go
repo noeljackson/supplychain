@@ -30,7 +30,9 @@ func Human(w io.Writer, f scan.Findings, opts Options) int {
 	if !hasSupplyChain && !hasAdvisory {
 		if !opts.Quiet {
 			fmt.Fprintf(w, "ok  clean: %s\n", f.Target)
-			if !f.OSVAvailable {
+			if f.OSVStatus == scan.OSVNotApplicable {
+				fmt.Fprintln(w, "    note: OSV dependency scan not applicable — no supported package sources found.")
+			} else if !f.OSVAvailable {
 				fmt.Fprintln(w, "    note: osv-scanner not installed — OSV advisory check skipped. Run 'supplychain update' to install.")
 			}
 			renderFreshness(w, f)
