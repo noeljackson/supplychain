@@ -3,14 +3,26 @@ package osv
 import (
 	"context"
 	"crypto/sha256"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 )
+
+func TestNoPackageSourcesExitIsRecognized(t *testing.T) {
+	err := &exec.ExitError{Stderr: []byte("No package sources found, --help for usage information.\n")}
+	if !isNoPackageSources(err) {
+		t.Fatal("expected no-package-sources stderr to be recognized")
+	}
+	if errors.Is(err, ErrNoPackageSources) {
+		t.Fatal("raw process error must not equal the public sentinel")
+	}
+}
 
 func TestDownloadVerifiesDigest(t *testing.T) {
 	body := []byte("reviewed binary")

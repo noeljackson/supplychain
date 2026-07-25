@@ -12,6 +12,16 @@ import (
 	"github.com/noeljackson/supplychain/internal/osv"
 )
 
+func TestNoPackageSourcesIsNotApplicable(t *testing.T) {
+	findings := Findings{OSVAvailable: true, OSVStatus: OSVUnavailable}
+	if err := applyOSVResult(&findings, nil, osv.ErrNoPackageSources); err != nil {
+		t.Fatal(err)
+	}
+	if findings.OSVStatus != OSVNotApplicable {
+		t.Fatalf("status = %q, want %q", findings.OSVStatus, OSVNotApplicable)
+	}
+}
+
 func TestRequireOSVFailsClosedWhenUnavailable(t *testing.T) {
 	oldPath := os.Getenv("PATH")
 	t.Setenv("PATH", t.TempDir())

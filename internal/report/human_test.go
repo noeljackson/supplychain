@@ -57,3 +57,18 @@ func TestHumanSupplyChainHitFails(t *testing.T) {
 		t.Fatalf("missing supply-chain header in output:\n%s", out.String())
 	}
 }
+
+func TestHumanExplainsOSVNotApplicable(t *testing.T) {
+	f := scan.Findings{
+		Target:       "/docs-only",
+		OSVAvailable: true,
+		OSVStatus:    scan.OSVNotApplicable,
+	}
+	var out bytes.Buffer
+	if code := Human(&out, f, Options{}); code != 0 {
+		t.Fatalf("exit code = %d, want 0", code)
+	}
+	if !strings.Contains(out.String(), "not applicable") {
+		t.Fatalf("missing not-applicable explanation:\n%s", out.String())
+	}
+}

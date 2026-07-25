@@ -94,8 +94,10 @@ that exact document with Grype. The `sbom` action output is suitable for later
 artifact upload or attestation. Gitleaks, Syft, Grype, and OSV Scanner are
 installed from cooldown-aged, immutable releases whose expected SHA-256 hashes
 live in this repository. Strict source scans fail if OSV Scanner is absent or
-fails; image scans require a fresh, hash-valid Grype database and a successful
-update check. Image scans always use an isolated empty Grype config, so a
+fails. A target with no supported package sources is reported as
+`not_applicable`, not as lost coverage. Image scans require a fresh, hash-valid
+Grype database and a successful update check. Image scans always use an
+isolated empty Grype config, so a
 repository cannot silently weaken the gate with `.grype.yaml`. A reviewed,
 tracked OpenVEX document may be selected explicitly with `vex`; untracked,
 external, oversized, and symlinked policy files are rejected.
