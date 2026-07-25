@@ -75,8 +75,19 @@ type Findings struct {
 	Maintainers []maintainer.Hit       `json:"maintainer_changes"`
 	Drift       []drift.Hit            `json:"drift_hits"`
 
-	OSVAvailable bool `json:"osv_available"`
+	OSVAvailable bool      `json:"osv_available"`
+	OSVStatus    OSVStatus `json:"osv_status"`
 }
+
+// OSVStatus distinguishes a completed scan from missing coverage and a target
+// where dependency-vulnerability scanning is not applicable.
+type OSVStatus string
+
+const (
+	OSVUnavailable   OSVStatus = "unavailable"
+	OSVCompleted     OSVStatus = "completed"
+	OSVNotApplicable OSVStatus = "not_applicable"
+)
 
 // HasSupplyChainHits returns true for indicators that point at dependency
 // compromise, tampering, persistence, typosquatting, or maintainer takeover.
@@ -106,7 +117,7 @@ func (f Findings) HasHits() bool {
 
 // Run executes the scan.
 func Run(opts Options) (Findings, error) {
-	f := Findings{Target: opts.Target}
+	f := Findings{Target: opts.Target, OSVStatus: OSVUnavailable}
 	if opts.OpenIOC == nil {
 		return f, errors.New("scan: OpenIOC is required")
 	}
@@ -198,13 +209,25 @@ func Run(opts Options) (Findings, error) {
 		return f, nil
 	}
 	osvHits, osvErr := osv.Scan(opts.BinDir, opts.Target)
-	if osvErr != nil {
-		return f, fmt.Errorf("scan: OSV advisory check: %w", osvErr)
-	}
-	if osvHits != nil {
-		f.OSV = osvHits
+	if err := applyOSVResult(&f, osvHits, osvErr); err != nil {
+		return f, err
 	}
 	return f, nil
+}
+
+func applyOSVResult(f *Findings, hits []osv.PackageVuln, err error) error {
+	if errors.Is(err, osv.ErrNoPackageSources) {
+		f.OSVStatus = OSVNotApplicable
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("scan: OSV advisory check: %w", err)
+	}
+	f.OSVStatus = OSVCompleted
+	if hits != nil {
+		f.OSV = hits
+	}
+	return nil
 }
 
 func isAvailable(binDir string) bool {

@@ -63,6 +63,11 @@ type PackageVuln struct {
 	SourcePath string
 }
 
+// ErrNoPackageSources means the scanner ran successfully enough to determine
+// that the target contains no supported dependency manifests or lockfiles.
+// This is not a coverage failure for a docs-only repository.
+var ErrNoPackageSources = errors.New("no package sources found")
+
 // Scan runs osv-scanner against target and returns parsed findings.
 // Returns (nil, nil) if osv-scanner is unavailable — that's an expected
 // state, not an error.
@@ -81,12 +86,18 @@ func Scan(binDir, target string) ([]PackageVuln, error) {
 	cmd := exec.CommandContext(ctx, path, args...)
 	out, err := cmd.Output()
 	if err != nil {
+		if isNoPackageSources(err) {
+			return nil, ErrNoPackageSources
+		}
 		// Exit code 1 means findings — that's expected; only re-run on usage error.
 		var exitErr *exec.ExitError
 		if !errors.As(err, &exitErr) || exitErr.ExitCode() > 1 {
 			cmd = exec.CommandContext(ctx, path, "--recursive", "--format", "json", target)
 			out, err = cmd.Output()
 			if err != nil {
+				if isNoPackageSources(err) {
+					return nil, ErrNoPackageSources
+				}
 				if !errors.As(err, &exitErr) || exitErr.ExitCode() > 1 {
 					return nil, fmt.Errorf("osv-scanner failed: %w", err)
 				}
@@ -94,6 +105,13 @@ func Scan(binDir, target string) ([]PackageVuln, error) {
 		}
 	}
 	return parse(out)
+}
+
+func isNoPackageSources(err error) bool {
+	var exitErr *exec.ExitError
+	return errors.As(err, &exitErr) && strings.Contains(
+		strings.ToLower(string(exitErr.Stderr)), "no package sources found",
+	)
 }
 
 // parse extracts a flat list of (name, version, ids, src) from osv-scanner's
