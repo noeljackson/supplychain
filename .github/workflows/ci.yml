@@ -19,6 +19,12 @@ jobs:
       - run: go vet ./...
       - run: go build -ldflags "-s -w" -o supplychain ./
       - run: go test ./... -race -count=1
+      - name: Enforce pinned release toolchain
+        run: python3 scripts/check_release_security.py
+      - name: Test IOC refresh logic
+        run: python3 -m unittest discover -s scripts -p 'test_*.py'
+      - name: Enforce security-critical coverage floors
+        run: python3 scripts/check_go_coverage.py
       - name: Build clean fixture image
         run: docker build --tag supplychain-fixture:ci testdata/image
       - name: Exercise the composite action and image scanner

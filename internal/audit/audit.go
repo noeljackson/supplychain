@@ -6,11 +6,13 @@ package audit
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/noeljackson/supplychain/internal/ioc"
@@ -22,8 +24,9 @@ type Findings struct {
 	CommitHits   []CommitHit      `json:"commit_hits"`
 	Payloads     []ioc.PayloadHit `json:"payload_hits"`
 	Persistence  []string         `json:"persistence_hits"`
-	HistoryFiles []string         `json:"history_files_scanned"`
-	ReposScanned int              `json:"repos_scanned"`
+	Histories    []TargetStatus   `json:"histories"`
+	Repositories []TargetStatus   `json:"repositories"`
+	PayloadRoots []TargetStatus   `json:"payload_roots"`
 }
 
 func (f Findings) HasHits() bool {
@@ -33,11 +36,49 @@ func (f Findings) HasHits() bool {
 		len(f.Persistence) > 0
 }
 
-// C2Hit is a single shell-history line that mentions a known C2 domain.
+func (f Findings) HasCoverageGaps() bool {
+	statuses := append(append([]TargetStatus{}, f.Histories...), f.Repositories...)
+	statuses = append(statuses, f.PayloadRoots...)
+	for _, status := range statuses {
+		if status.Status == "failed" {
+			return true
+		}
+	}
+	return false
+}
+
+func (f Findings) CompletedHistories() int {
+	return completedTargets(f.Histories)
+}
+
+func (f Findings) CompletedRepositories() int {
+	return completedTargets(f.Repositories)
+}
+
+func completedTargets(statuses []TargetStatus) int {
+	count := 0
+	for _, status := range statuses {
+		if status.Status == "completed" {
+			count++
+		}
+	}
+	return count
+}
+
+// TargetStatus records forensic coverage for one requested input.
+type TargetStatus struct {
+	Path       string `json:"path"`
+	Status     string `json:"status"`
+	Diagnostic string `json:"diagnostic,omitempty"`
+}
+
+// C2Hit is a redacted shell-history match.
 type C2Hit struct {
-	File   string `json:"file"`
-	Domain string `json:"domain"`
-	Line   string `json:"line"`
+	File       string `json:"file"`
+	LineNumber int    `json:"line_number"`
+	Domain     string `json:"domain"`
+	Context    string `json:"context"`
+	FullLine   string `json:"full_line,omitempty"`
 }
 
 // CommitHit is a single git commit whose author + subject matches a known
@@ -69,6 +110,10 @@ type Options struct {
 
 	// GitRoot is walked recursively for .git directories.
 	GitRoot string
+
+	// UnsafeHistoryContext includes full matching history lines. It is off by
+	// default because command lines commonly contain credentials.
+	UnsafeHistoryContext bool
 }
 
 // Run executes the audit.
@@ -90,27 +135,23 @@ func Run(opts Options) (Findings, error) {
 	if err != nil {
 		return f, err
 	}
-	f.Payloads, err = findPayloadsSystemWide(opts.HomeDir, payloadNames)
-	if err != nil {
-		return f, err
-	}
+	f.Payloads, f.PayloadRoots = findPayloadsSystemWide(opts.HomeDir, payloadNames)
 
 	// 3. C2 domains in shell history.
 	domains, err := ioc.LoadList(opts.OpenIOC, "c2-domains.txt")
 	if err != nil {
 		return f, err
 	}
-	f.HistoryFiles, f.C2Hits = scanHistory(opts.HistoryFiles, domains)
+	f.Histories, f.C2Hits = scanHistory(
+		opts.HistoryFiles, domains, opts.UnsafeHistoryContext,
+	)
 
 	// 4. Dead-drop commits across git repos.
 	sigs, err := loadDeadDropSignatures(opts.OpenIOC)
 	if err != nil {
 		return f, err
 	}
-	f.ReposScanned, f.CommitHits, err = scanGitRepos(opts.GitRoot, sigs)
-	if err != nil {
-		return f, err
-	}
+	f.Repositories, f.CommitHits = scanGitRepos(opts.GitRoot, sigs)
 
 	return f, nil
 }
@@ -135,7 +176,7 @@ func DefaultHistoryFiles(home string) []string {
 // findPayloadsSystemWide walks home looking for any file with a basename in
 // names. Skips known-noisy dirs that won't host malware (or will host so much
 // other crap the walk is unusable).
-func findPayloadsSystemWide(home string, names []string) ([]ioc.PayloadHit, error) {
+func findPayloadsSystemWide(home string, names []string) ([]ioc.PayloadHit, []TargetStatus) {
 	if len(names) == 0 || home == "" {
 		return nil, nil
 	}
@@ -167,10 +208,12 @@ func findPayloadsSystemWide(home string, names []string) ([]ioc.PayloadHit, erro
 	}
 
 	var hits []ioc.PayloadHit
+	var statuses []TargetStatus
 	walk := func(root string) {
-		_ = filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+		status := TargetStatus{Path: root, Status: "completed"}
+		err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 			if err != nil {
-				return nil
+				return err
 			}
 			if d.IsDir() {
 				if _, skip := skipDirs[d.Name()]; skip {
@@ -183,43 +226,82 @@ func findPayloadsSystemWide(home string, names []string) ([]ioc.PayloadHit, erro
 			}
 			return nil
 		})
+		if errors.Is(err, os.ErrNotExist) {
+			status.Status = "skipped"
+			status.Diagnostic = "not found"
+		} else if err != nil {
+			status.Status = "failed"
+			status.Diagnostic = err.Error()
+		}
+		statuses = append(statuses, status)
 	}
 	walk(home)
 	walk(filepath.Join(home, ".local", "bin"))
 	walk(filepath.Join(home, ".local", "share", "applications"))
 	walk("/tmp")
-	return hits, nil
+	sort.Slice(hits, func(i, j int) bool { return hits[i].Path < hits[j].Path })
+	return hits, statuses
 }
 
 // scanHistory greps each history file for any of the domains. Reads line by
 // line and reports first-match-per-line. Missing history files are skipped
-// silently. Returns the list of files actually opened plus all hits.
-func scanHistory(historyFiles []string, domains []string) ([]string, []C2Hit) {
-	var scanned []string
+// silently. Every requested path receives a completed, failed, or skipped
+// status, and scanner truncation is a failed coverage result.
+func scanHistory(
+	historyFiles []string,
+	domains []string,
+	unsafeContext bool,
+) ([]TargetStatus, []C2Hit) {
+	var statuses []TargetStatus
 	var hits []C2Hit
 	if len(domains) == 0 {
-		return scanned, hits
+		return statuses, hits
 	}
 	for _, p := range historyFiles {
 		f, err := os.Open(p)
 		if err != nil {
+			status := TargetStatus{Path: p, Status: "failed", Diagnostic: err.Error()}
+			if errors.Is(err, os.ErrNotExist) {
+				status.Status = "skipped"
+				status.Diagnostic = "not found"
+			}
+			statuses = append(statuses, status)
 			continue
 		}
-		scanned = append(scanned, p)
 		sc := bufio.NewScanner(f)
 		sc.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+		lineNumber := 0
 		for sc.Scan() {
+			lineNumber++
 			line := sc.Text()
 			for _, d := range domains {
 				if strings.Contains(line, d) {
-					hits = append(hits, C2Hit{File: p, Domain: d, Line: line})
+					hit := C2Hit{
+						File:       p,
+						LineNumber: lineNumber,
+						Domain:     d,
+						Context:    "[redacted] " + d + " [redacted]",
+					}
+					if unsafeContext {
+						hit.FullLine = line
+					}
+					hits = append(hits, hit)
 					break // one hit per line is enough; don't multi-flag for overlapping domains
 				}
 			}
 		}
-		f.Close()
+		status := TargetStatus{Path: p, Status: "completed"}
+		if err := sc.Err(); err != nil {
+			status.Status = "failed"
+			status.Diagnostic = err.Error()
+		}
+		if err := f.Close(); err != nil && status.Status == "completed" {
+			status.Status = "failed"
+			status.Diagnostic = err.Error()
+		}
+		statuses = append(statuses, status)
 	}
-	return scanned, hits
+	return statuses, hits
 }
 
 // loadDeadDropSignatures parses iocs/dead-drop-signatures.txt. Each non-blank
@@ -255,17 +337,16 @@ func loadDeadDropSignatures(open func(string) (fs.File, error)) ([]DeadDropSig, 
 	return out, sc.Err()
 }
 
-// scanGitRepos walks root looking for .git directories, then for each
-// resolved repo runs `git log --all --pretty=format:%H|%ae|%s` and matches
-// each commit against the signatures. Returns the number of repos scanned.
-func scanGitRepos(root string, sigs []DeadDropSig) (int, []CommitHit, error) {
+// scanGitRepos walks root looking for .git directories and records the result
+// of each requested git-log operation.
+func scanGitRepos(root string, sigs []DeadDropSig) ([]TargetStatus, []CommitHit) {
 	if root == "" || len(sigs) == 0 {
-		return 0, nil, nil
+		return nil, nil
 	}
 	var repos []string
 	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
-			return nil
+			return walkErr
 		}
 		if !d.IsDir() {
 			return nil
@@ -281,14 +362,20 @@ func scanGitRepos(root string, sigs []DeadDropSig) (int, []CommitHit, error) {
 		return nil
 	})
 	if err != nil {
-		return 0, nil, err
+		return []TargetStatus{{
+			Path: root, Status: "failed", Diagnostic: err.Error(),
+		}}, nil
 	}
 
 	var hits []CommitHit
+	var statuses []TargetStatus
 	for _, repo := range repos {
 		cmd := exec.Command("git", "-C", repo, "log", "--all", "--pretty=format:%H|%ae|%s")
 		out, err := cmd.Output()
 		if err != nil {
+			statuses = append(statuses, TargetStatus{
+				Path: repo, Status: "failed", Diagnostic: err.Error(),
+			})
 			continue
 		}
 		sc := bufio.NewScanner(strings.NewReader(string(out)))
@@ -313,6 +400,12 @@ func scanGitRepos(root string, sigs []DeadDropSig) (int, []CommitHit, error) {
 				}
 			}
 		}
+		status := TargetStatus{Path: repo, Status: "completed"}
+		if err := sc.Err(); err != nil {
+			status.Status = "failed"
+			status.Diagnostic = err.Error()
+		}
+		statuses = append(statuses, status)
 	}
-	return len(repos), hits, nil
+	return statuses, hits
 }

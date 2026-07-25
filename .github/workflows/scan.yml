@@ -23,6 +23,16 @@ on:
         required: false
         type: string
         default: ""
+      source-policy:
+        description: Tracked source advisory policy path inside the scan target
+        required: false
+        type: string
+        default: ""
+      maintainer-baseline:
+        description: Deterministic tracked maintainer baseline path
+        required: false
+        type: string
+        default: ""
 
 permissions:
   contents: read
@@ -40,8 +50,8 @@ jobs:
       - name: Check out the exact called-workflow source
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
-          repository: ${{ job.workflow_repository }}
-          ref: ${{ job.workflow_sha }}
+          repository: noeljackson/supplychain
+          ref: ${{ github.workflow_sha }}
           path: .supplychain-action
           persist-credentials: false
       - name: Run supplychain
@@ -52,3 +62,5 @@ jobs:
           minimum-release-age-days: ${{ inputs.minimum-release-age-days }}
           baseline: ${{ inputs.baseline }}
           gitleaks-config: ${{ inputs.gitleaks-config }}
+          source-policy: ${{ inputs.source-policy }}
+          maintainer-baseline: ${{ inputs.maintainer-baseline }}

@@ -1,11 +1,13 @@
 package cmd
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
 
+	"github.com/noeljackson/supplychain/internal/report"
 	"github.com/noeljackson/supplychain/internal/secrets"
 )
 
@@ -27,11 +29,14 @@ func cmdSecrets(g *Globals, args []string) int {
 	abs, err := filepath.Abs(target)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "secrets:", err)
-		return 1
+		return report.ExitOperational
 	}
 	if err := secrets.Run(abs, g.BinDir, *config); err != nil {
 		fmt.Fprintln(os.Stderr, err)
-		return 1
+		if errors.Is(err, secrets.ErrFindings) {
+			return report.ExitFindings
+		}
+		return report.ExitOperational
 	}
-	return 0
+	return report.ExitClean
 }

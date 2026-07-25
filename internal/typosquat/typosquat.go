@@ -6,6 +6,7 @@ package typosquat
 import (
 	_ "embed"
 	"encoding/json"
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -72,7 +73,7 @@ func CheckWith(target string, maxDistance int) ([]Hit, error) {
 	var hits []Hit
 	err := filepath.WalkDir(target, func(path string, d fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
-			return nil
+			return fmt.Errorf("walk package manifest path %s: %w", path, walkErr)
 		}
 		if d.IsDir() {
 			name := d.Name()
@@ -86,7 +87,7 @@ func CheckWith(target string, maxDistance int) ([]Hit, error) {
 		}
 		fileHits, err := scanFile(path, maxDistance)
 		if err != nil {
-			return nil
+			return fmt.Errorf("scan package manifest %s: %w", path, err)
 		}
 		hits = append(hits, fileHits...)
 		return nil

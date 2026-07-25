@@ -8,6 +8,8 @@
 *.test
 *.out
 coverage.*
+__pycache__/
+*.py[cod]
 
 # Go workspace files (local-only)
 go.work

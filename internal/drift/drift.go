@@ -16,6 +16,7 @@ package drift
 
 import (
 	"encoding/json"
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -43,7 +44,7 @@ func ScanRepo(root string) ([]Hit, error) {
 	var hits []Hit
 	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
-			return nil
+			return fmt.Errorf("walk manifest path %s: %w", path, walkErr)
 		}
 		if d.IsDir() {
 			n := d.Name()
@@ -55,24 +56,27 @@ func ScanRepo(root string) ([]Hit, error) {
 		if d.Name() != "package.json" {
 			return nil
 		}
-		fileHits := scanManifest(path)
+		fileHits, err := scanManifest(path)
+		if err != nil {
+			return err
+		}
 		hits = append(hits, fileHits...)
 		return nil
 	})
 	return hits, err
 }
 
-func scanManifest(manifestPath string) []Hit {
+func scanManifest(manifestPath string) ([]Hit, error) {
 	dir := filepath.Dir(manifestPath)
 
 	lockfile, locked := pickLockfile(dir)
 	if lockfile == "" {
-		return nil
+		return nil, nil
 	}
 
 	pj, err := readManifest(manifestPath)
 	if err != nil {
-		return nil
+		return nil, fmt.Errorf("read manifest %s: %w", manifestPath, err)
 	}
 
 	var hits []Hit
@@ -107,7 +111,7 @@ func scanManifest(manifestPath string) []Hit {
 			}
 		}
 	}
-	return hits
+	return hits, nil
 }
 
 type packageJSON struct {

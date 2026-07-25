@@ -26,6 +26,10 @@ archives:
 checksum:
   name_template: 'checksums.txt'
 
+sboms:
+  - id: release-archives
+    artifacts: archive
+
 changelog:
   sort: asc
   filters:
@@ -40,8 +44,10 @@ release:
   prerelease: auto
   draft: false
 
-brews:
+homebrew_casks:
   - name: supplychain
+    ids: [supplychain]
+    binaries: [supplychain]
     description: "Supply-chain scanner for JS projects (manifest + lockfile + IOCs + OSV)"
     homepage:    "https://github.com/noeljackson/supplychain"
     repository:
@@ -49,12 +55,8 @@ brews:
       name:   homebrew-tap
       branch: main
       token:  '{{ .Env.HOMEBREW_TAP_TOKEN }}'
-    directory: Formula
+    directory: Casks
     commit_author:
       name:  github-actions[bot]
       email: 41898282+github-actions[bot]@users.noreply.github.com
     commit_msg_template: "supplychain: bump to {{ .Tag }}"
-    install: |
-      bin.install "supplychain"
-    test: |
-      system "#{bin}/supplychain", "version"

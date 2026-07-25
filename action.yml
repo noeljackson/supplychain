@@ -23,6 +23,14 @@ inputs:
     description: Explicit reviewed Gitleaks config path inside the scan target
     required: false
     default: ""
+  source-policy:
+    description: Tracked source advisory policy path inside the scan target
+    required: false
+    default: ""
+  maintainer-baseline:
+    description: Deterministic tracked maintainer baseline path inside the scan target
+    required: false
+    default: ""
   scan-source:
     description: Run repository, dependency, OSV, Bun, Gitleaks, and zizmor checks
     required: false
@@ -100,6 +108,8 @@ runs:
         INPUT_MINIMUM_AGE: ${{ inputs.minimum-release-age-days }}
         INPUT_BASELINE: ${{ inputs.baseline }}
         INPUT_GITLEAKS_CONFIG: ${{ inputs.gitleaks-config }}
+        INPUT_SOURCE_POLICY: ${{ inputs.source-policy }}
+        INPUT_MAINTAINER_BASELINE: ${{ inputs.maintainer-baseline }}
         SUPPLYCHAIN_BIN_DIR: ${{ runner.temp }}/supplychain-bin
       run: |
         set -euo pipefail
@@ -107,11 +117,19 @@ runs:
         if [ -n "$INPUT_GITLEAKS_CONFIG" ]; then
           config_args+=(--gitleaks-config="$INPUT_GITLEAKS_CONFIG")
         fi
+        policy_args=()
+        if [ -n "$INPUT_SOURCE_POLICY" ]; then
+          policy_args+=(--source-policy="$INPUT_SOURCE_POLICY")
+        fi
+        if [ -n "$INPUT_MAINTAINER_BASELINE" ]; then
+          policy_args+=(--maintainer-baseline="$INPUT_MAINTAINER_BASELINE")
+        fi
         "$RUNNER_TEMP/supplychain-action" ci \
           --policy="$INPUT_POLICY" \
           --minimum-age-days="$INPUT_MINIMUM_AGE" \
           --baseline="$INPUT_BASELINE" \
           "${config_args[@]}" \
+          "${policy_args[@]}" \
           "$INPUT_PATH"
     - name: Inventory and scan OCI image
       id: image

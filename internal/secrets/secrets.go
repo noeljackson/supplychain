@@ -15,6 +15,9 @@ import (
 
 const scanTimeout = 10 * time.Minute
 
+// ErrFindings distinguishes detected secrets from an operational failure.
+var ErrFindings = errors.New("secret findings")
+
 // Run scans target with Gitleaks. Findings are reported by Gitleaks and cause
 // a non-zero exit. Repository configuration is ignored unless config is an
 // explicit, tracked path inside target.
@@ -44,7 +47,6 @@ func Run(target, binDir, config string) error {
 		"--no-color",
 		"--redact",
 		"--log-level", "warn",
-		"--max-target-megabytes", "10",
 		"--exit-code", "1",
 	}
 	if configPath != "" {
@@ -58,6 +60,10 @@ func Run(target, binDir, config string) error {
 	if err := cmd.Run(); err != nil {
 		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
 			return errors.New("secrets: gitleaks scan timed out")
+		}
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) && exitErr.ExitCode() == 1 {
+			return fmt.Errorf("%w: gitleaks policy failed", ErrFindings)
 		}
 		return fmt.Errorf("secrets: gitleaks policy failed: %w", err)
 	}

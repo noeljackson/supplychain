@@ -1,0 +1,69 @@
+{
+  "schema_version": 1,
+  "command": "scan",
+  "scanner": {
+    "name": "supplychain",
+    "version": "v1.2.3"
+  },
+  "target": "/repo",
+  "policy": {
+    "mode": "strict",
+    "fail_on_advisory": true,
+    "source": {
+      "name": "repository-source-policy",
+      "path": ".supplychain/source-policy.json",
+      "sha256": "policy-digest"
+    }
+  },
+  "ioc_snapshot": {
+    "source": "embedded",
+    "schema_version": 1,
+    "generated_at": "2026-07-25T00:00:00Z",
+    "source_revision": "abc123",
+    "manifest_sha256": "ioc-digest"
+  },
+  "helpers": {
+    "osv-scanner": "unavailable"
+  },
+  "outcome": {
+    "status": "incomplete",
+    "exit_code": 3,
+    "has_findings": false,
+    "has_supply_chain_findings": false,
+    "has_advisory_findings": false,
+    "has_coverage_gaps": true,
+    "has_required_coverage_gaps": true
+  },
+  "checks": {
+    "osv": {
+      "status": "incomplete",
+      "required": true,
+      "diagnostic": "missing helper",
+      "duration_ms": 7
+    }
+  },
+  "timings": {
+    "total_ms": 42
+  },
+  "diagnostics": [
+    {
+      "check": "osv",
+      "status": "incomplete",
+      "required": true,
+      "message": "missing helper"
+    }
+  ],
+  "findings": {
+    "manifest_ioc": [],
+    "lockfile_ioc": [],
+    "osv": [],
+    "payload_ioc": [],
+    "install_scripts": [],
+    "freshness": [],
+    "typosquat": [],
+    "npm_signatures": [],
+    "maintainers": [],
+    "lockfile_drift": [],
+    "suppressed": []
+  }
+}
