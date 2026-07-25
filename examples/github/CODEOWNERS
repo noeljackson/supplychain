@@ -1,0 +1,8 @@
+# Replace @YOUR-ORG/security with a visible team that has write access.
+# Protect CODEOWNERS itself so the review boundary cannot remove its owner.
+/.github/CODEOWNERS @YOUR-ORG/security
+/.github/workflows/** @YOUR-ORG/security
+/.github/actions/** @YOUR-ORG/security
+/.supplychain/** @YOUR-ORG/security
+/.gitleaks.toml @YOUR-ORG/security
+/.goreleaser.y*ml @YOUR-ORG/security

@@ -1,10 +1,12 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 
+	"github.com/noeljackson/supplychain/internal/report"
 	"github.com/noeljackson/supplychain/internal/workflow"
 )
 
@@ -20,11 +22,14 @@ func cmdWorkflows(g *Globals, args []string) int {
 	abs, err := filepath.Abs(target)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "workflows:", err)
-		return 1
+		return report.ExitOperational
 	}
 	if err := workflow.Run(abs, g.BinDir); err != nil {
 		fmt.Fprintln(os.Stderr, err)
-		return 1
+		if errors.Is(err, workflow.ErrFindings) {
+			return report.ExitFindings
+		}
+		return report.ExitOperational
 	}
-	return 0
+	return report.ExitClean
 }

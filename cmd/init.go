@@ -7,9 +7,14 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/noeljackson/supplychain/internal/report"
 )
 
-const githubWorkflow = `name: supplychain
+const githubWorkflow = `# SECURITY: protect this file, .github/CODEOWNERS, .supplychain/**,
+# and any reviewed Gitleaks/Bun policy with independent security ownership.
+# Require code-owner review and dismiss stale approvals for changes to them.
+name: supplychain
 
 on:
   pull_request:
@@ -33,7 +38,9 @@ jobs:
       policy: POLICY
 `
 
-const giteaWorkflow = `name: supplychain
+const giteaWorkflow = `# SECURITY: protect this file, .gitea/CODEOWNERS, .supplychain/**,
+# and any reviewed Gitleaks/Bun policy with independent security ownership.
+name: supplychain
 
 on:
   pull_request:
@@ -93,20 +100,20 @@ func cmdInit(_ *Globals, args []string) int {
 	path := filepath.Join(directory, "workflows", "supplychain.yml")
 	if _, err := os.Stat(path); err == nil && !*force {
 		fmt.Fprintln(os.Stderr, "init "+platform+":", path, "already exists; use --force to replace")
-		return 1
+		return report.ExitUsage
 	} else if err != nil && !errors.Is(err, os.ErrNotExist) {
 		fmt.Fprintln(os.Stderr, "init "+platform+":", err)
-		return 1
+		return report.ExitOperational
 	}
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		fmt.Fprintln(os.Stderr, "init "+platform+":", err)
-		return 1
+		return report.ExitOperational
 	}
 	contents := strings.ReplaceAll(workflow, "ACTION_REF", *ref)
 	contents = strings.ReplaceAll(contents, "POLICY", *policy)
 	if err := os.WriteFile(path, []byte(contents), 0o644); err != nil {
 		fmt.Fprintln(os.Stderr, "init "+platform+":", err)
-		return 1
+		return report.ExitOperational
 	}
 	fmt.Println("installed", path)
 	return 0

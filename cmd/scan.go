@@ -12,6 +12,10 @@ import (
 )
 
 func cmdScan(g *Globals, args []string) int {
+	if len(args) > 1 {
+		fmt.Fprintln(os.Stderr, "usage: supplychain scan [path]")
+		return report.ExitUsage
+	}
 	target := "."
 	if len(args) > 0 {
 		target = args[0]
@@ -19,11 +23,11 @@ func cmdScan(g *Globals, args []string) int {
 	abs, err := filepath.Abs(target)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "error:", err)
-		return 1
+		return report.ExitOperational
 	}
 	if st, err := os.Stat(abs); err != nil || !st.IsDir() {
 		fmt.Fprintln(os.Stderr, "not a directory:", abs)
-		return 1
+		return report.ExitOperational
 	}
 
 	if !g.NoUpdate {
@@ -33,30 +37,46 @@ func cmdScan(g *Globals, args []string) int {
 	}
 
 	findings, err := scan.Run(scan.Options{
-		Target:            abs,
-		OpenIOC:           g.OpenIOC,
-		BinDir:            g.BinDir,
-		FreshnessDays:     g.FreshnessDays,
-		Registry:          registry.NewClient(filepath.Join(g.DataDir, "registry-cache")),
-		Signatures:        g.Signatures,
-		Maintainers:       g.Maintainers,
-		MaintainerBaseDir: filepath.Join(g.DataDir, "maintainers"),
-		TyposquatDistance: g.TyposquatDistance,
-		OSMCachePath:      filepath.Join(g.DataDir, "osm-cache.json"),
-		RequireOSV:        g.FailOnAdvisory,
+		Target:             abs,
+		OpenIOC:            g.OpenIOC,
+		BinDir:             g.BinDir,
+		FreshnessDays:      g.FreshnessDays,
+		Registry:           registry.NewClient(filepath.Join(g.DataDir, "registry-cache")),
+		Signatures:         g.Signatures,
+		Maintainers:        g.Maintainers,
+		AcceptMaintainers:  g.AcceptMaintainers,
+		MaintainerBaseDir:  filepath.Join(g.DataDir, "maintainers"),
+		MaintainerBaseline: g.MaintainerBaseline,
+		TyposquatDistance:  g.TyposquatDistance,
+		OSMCachePath:       filepath.Join(g.DataDir, "osm-cache.json"),
+		RequireOSV:         g.FailOnAdvisory,
+		RequireComplete:    g.FailOnAdvisory,
+		SourcePolicy:       g.SourcePolicy,
 	})
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "scan error:", err)
-		return 1
+		return report.ExitOperational
 	}
-
-	if g.JSON {
-		return report.JSON(os.Stdout, findings, report.Options{FailOnAdvisory: g.FailOnAdvisory})
+	iocIdentity, identityErr := update.ReadSnapshotIdentity(g.DataDir, g.DefaultIOCs)
+	if identityErr != nil {
+		findings.Coverage.Set(
+			"ioc_snapshot_identity",
+			"failed",
+			true,
+			identityErr.Error(),
+		)
 	}
-	return report.Human(os.Stdout, findings, report.Options{
+	reportOptions := report.Options{
 		Quiet:          g.Quiet,
 		ShowScripts:    g.Scripts,
 		ScriptsOnly:    g.ScriptsOnly,
 		FailOnAdvisory: g.FailOnAdvisory,
-	})
+		ScannerVersion: Version,
+		IOCSnapshot:    iocIdentity,
+	}
+
+	if g.JSON {
+		return report.JSON(os.Stdout, findings, reportOptions)
+	}
+	return report.Human(os.Stdout, findings, reportOptions)
 }

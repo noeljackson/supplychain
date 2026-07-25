@@ -1,0 +1,4 @@
+# yarn lockfile v1
+"safe-action@^0.8.0":
+  version "0.8.4"
+  resolved "https://registry.yarnpkg.com/safe-action/-/safe-action-0.8.4.tgz"

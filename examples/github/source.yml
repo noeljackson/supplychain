@@ -1,4 +1,5 @@
 # Replace FULL_COMMIT_SHA with a reviewed 40-character supplychain commit.
+# Protect this file and .supplychain/** with security CODEOWNERS.
 name: supplychain
 
 on:

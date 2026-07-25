@@ -1,6 +1,7 @@
 package ioc
 
 import (
+	"fmt"
 	"io/fs"
 	"path/filepath"
 )
@@ -27,7 +28,7 @@ func FindPayloads(target string, names []string) ([]PayloadHit, error) {
 	var hits []PayloadHit
 	err := filepath.WalkDir(target, func(path string, d fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
-			return nil // skip unreadable
+			return fmt.Errorf("inspect payload path %s: %w", path, walkErr)
 		}
 		if d.IsDir() {
 			if d.Name() == ".git" {

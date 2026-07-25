@@ -6,6 +6,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+
+	"github.com/noeljackson/supplychain/internal/report"
 )
 
 func cmdInstallHook(g *Globals, args []string) int {
@@ -28,7 +30,7 @@ func installClaudeHook(g *Globals) int {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
-		return 1
+		return report.ExitOperational
 	}
 	settings := filepath.Join(home, ".claude", "settings.json")
 	fmt.Printf(`To enable the Claude Code SessionStart scanner, add this to %s
@@ -52,13 +54,13 @@ func installPreCommitHook(g *Globals) int {
 	out, err := exec.Command("git", "rev-parse", "--show-toplevel").Output()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "not inside a git repo")
-		return 1
+		return report.ExitOperational
 	}
 	repo := strings.TrimSpace(string(out))
 	hook := filepath.Join(repo, ".git", "hooks", "pre-commit")
 	if st, err := os.Lstat(hook); err == nil && st.Mode()&os.ModeSymlink == 0 {
 		fmt.Fprintln(os.Stderr, hook, "exists and is not a symlink — install manually")
-		return 1
+		return report.ExitOperational
 	}
 	// Hook script is shipped in the repo we were installed from. With a
 	// `go install`-only install we don't have that on disk, so embed the
@@ -80,7 +82,7 @@ fi
 	_ = os.Remove(hook)
 	if err := os.WriteFile(hook, []byte(hookScript), 0o755); err != nil {
 		fmt.Fprintln(os.Stderr, "write hook:", err)
-		return 1
+		return report.ExitOperational
 	}
 	fmt.Println("installed pre-commit hook in", repo)
 	return 0

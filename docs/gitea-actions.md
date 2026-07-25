@@ -152,6 +152,15 @@ At the organization and repository levels under **Actions → General**:
 5. Register runners only at a scope whose repositories are trusted to execute
    on them, and always use isolated job containers.
 6. Protect `main` and require the supplychain status before merge.
+7. Assign independent security owners to `.gitea/workflows/**`,
+   `.gitea/CODEOWNERS`, `.supplychain/**`, reviewed Gitleaks configuration, and
+   Bun baselines. Require a fresh approval from those owners after every push.
+
+A required check whose definition lives in the consuming repository is not an
+independent enforcement boundary: a pull request may weaken the workflow while
+preserving its displayed check name. Prefer a required scoped workflow from a
+protected policy repository where available. Keep the per-repository ownership
+rule because policy and baseline files still live beside the code.
 
 Gitea pull-request workflows scan the pull-request head rather than a synthetic
 merge commit. Keep normal integration tests as a separate required check when

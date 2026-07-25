@@ -1,0 +1,6 @@
+{
+  "lockfileVersion": 1,
+  "packages": {
+    "safe-action": ["safe-action@0.8.4", "", {}, "sha512-fixture"]
+  }
+}

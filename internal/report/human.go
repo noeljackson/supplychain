@@ -4,9 +4,11 @@ package report
 import (
 	"fmt"
 	"io"
+	"sort"
 	"strings"
 
 	"github.com/noeljackson/supplychain/internal/scan"
+	"github.com/noeljackson/supplychain/internal/update"
 )
 
 // Options controls human-output rendering.
@@ -15,6 +17,8 @@ type Options struct {
 	ShowScripts    bool // include the install-script section
 	ScriptsOnly    bool // suppress everything except the install-script section
 	FailOnAdvisory bool // treat OSV/drift advisory findings as exit-code failures
+	ScannerVersion string
+	IOCSnapshot    update.SnapshotIdentity
 }
 
 // Human writes a human-readable report. Returns 1 if there are hits, 0 if clean.
@@ -27,7 +31,9 @@ func Human(w io.Writer, f scan.Findings, opts Options) int {
 
 	hasSupplyChain := f.HasSupplyChainHits()
 	hasAdvisory := f.HasAdvisoryHits()
-	if !hasSupplyChain && !hasAdvisory {
+	hasCoverageGaps := f.HasCoverageGaps()
+	hasRequiredCoverageGaps := f.HasRequiredCoverageGaps()
+	if !hasSupplyChain && !hasAdvisory && !hasCoverageGaps {
 		if !opts.Quiet {
 			fmt.Fprintf(w, "ok  clean: %s\n", f.Target)
 			if f.OSVStatus == scan.OSVNotApplicable {
@@ -47,10 +53,15 @@ func Human(w io.Writer, f scan.Findings, opts Options) int {
 		return 0
 	}
 
-	if hasSupplyChain {
+	switch {
+	case hasSupplyChain:
 		fmt.Fprintf(w, "err supply-chain indicators in %s\n", f.Target)
-	} else {
+	case hasAdvisory:
 		fmt.Fprintf(w, "warn dependency advisory/audit findings in %s\n", f.Target)
+	case hasRequiredCoverageGaps:
+		fmt.Fprintf(w, "err required scan coverage incomplete in %s\n", f.Target)
+	default:
+		fmt.Fprintf(w, "warn optional scan coverage incomplete in %s\n", f.Target)
 	}
 
 	if len(f.Manifest) > 0 {
@@ -82,13 +93,6 @@ func Human(w io.Writer, f scan.Findings, opts Options) int {
 			fmt.Fprintf(w, "  %s  (matches IOC %s)\n", p.Path, p.Filename)
 		}
 	}
-	if len(f.Persistence) > 0 {
-		fmt.Fprintln(w)
-		fmt.Fprintln(w, "OS-level persistence artifacts found:")
-		for _, p := range f.Persistence {
-			fmt.Fprintf(w, "  %s\n", p)
-		}
-	}
 	if len(f.Typosquat) > 0 {
 		fmt.Fprintln(w)
 		fmt.Fprintln(w, "Possible typosquats (similar to popular package names):")
@@ -108,7 +112,7 @@ func Human(w io.Writer, f scan.Findings, opts Options) int {
 		fmt.Fprintln(w)
 		fmt.Fprintln(w, "Maintainer-set changes since last scan:")
 		for _, h := range f.Maintainers {
-			fmt.Fprintf(w, "  %s\n", h.Name)
+			fmt.Fprintf(w, "  %s (%s)\n", h.Name, h.Reason)
 			if len(h.Added) > 0 {
 				fmt.Fprintf(w, "    +added:   %s\n", strings.Join(h.Added, ", "))
 			}
@@ -142,16 +146,62 @@ func Human(w io.Writer, f scan.Findings, opts Options) int {
 			}
 		}
 	}
+	if len(f.Suppressed) > 0 {
+		fmt.Fprintln(w)
+		fmt.Fprintln(w, "Suppressed advisory/audit findings (policy-visible):")
+		for _, item := range f.Suppressed {
+			selector := item.AdvisoryID
+			if selector == "" {
+				selector = item.DriftReason
+			}
+			fmt.Fprintf(w, "  %s %s %s — %s", item.Kind, item.Package, selector, item.Reason)
+			if item.Owner != "" {
+				fmt.Fprintf(w, " (owner %s, expires %s)", item.Owner, item.Expires)
+			}
+			fmt.Fprintln(w)
+		}
+	}
 	renderFreshness(w, f)
 	if opts.ShowScripts && len(f.Scripts) > 0 {
 		renderScripts(w, f, false)
 	} else if len(f.Scripts) > 0 {
 		fmt.Fprintf(w, "\nnote: %d installed deps declare install/postinstall scripts. Run with --scripts to list.\n", len(f.Scripts))
 	}
-	if hasSupplyChain || (opts.FailOnAdvisory && hasAdvisory) {
-		return 1
+	renderCoverageGaps(w, f)
+	if hasRequiredCoverageGaps {
+		return ExitOperational
 	}
-	return 0
+	if hasSupplyChain || (opts.FailOnAdvisory && hasAdvisory) {
+		return ExitFindings
+	}
+	return ExitClean
+}
+
+func renderCoverageGaps(w io.Writer, f scan.Findings) {
+	if !f.HasCoverageGaps() {
+		return
+	}
+	names := make([]string, 0, len(f.Coverage))
+	for name, result := range f.Coverage {
+		if result.Status == "incomplete" || result.Status == "failed" {
+			names = append(names, name)
+		}
+	}
+	sort.Strings(names)
+	fmt.Fprintln(w)
+	fmt.Fprintln(w, "Scan coverage gaps:")
+	for _, name := range names {
+		result := f.Coverage[name]
+		requirement := "optional"
+		if result.Required {
+			requirement = "required"
+		}
+		fmt.Fprintf(w, "  %s  %s, %s", name, result.Status, requirement)
+		if result.Diagnostic != "" {
+			fmt.Fprintf(w, ": %s", result.Diagnostic)
+		}
+		fmt.Fprintln(w)
+	}
 }
 
 func renderFreshness(w io.Writer, f scan.Findings) {
