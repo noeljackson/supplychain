@@ -3,11 +3,18 @@ name: release
 on:
   push:
     tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Published release tag to smoke test
+        required: true
+        type: string
 
 permissions: {}
 
 jobs:
   goreleaser:
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     environment: release
     permissions:
@@ -20,7 +27,9 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
       - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
-        with: { go-version: '1.26.5' }
+        with:
+          go-version: '1.26.5'
+          cache: false
       - run: go mod verify
       - name: Install pinned Syft for release SBOMs
         uses: anchore/sbom-action/download-syft@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
@@ -48,6 +57,11 @@ jobs:
 
   smoke:
     needs: goreleaser
+    if: >-
+      ${{
+        always() &&
+        (needs.goreleaser.result == 'success' || github.event_name == 'workflow_dispatch')
+      }}
     runs-on: macos-latest
     permissions:
       contents: read
@@ -55,10 +69,16 @@ jobs:
       - name: Brew install released version
         run: |
           brew tap noeljackson/tap
+          brew trust --cask noeljackson/tap/supplychain
           brew install --cask supplychain
       - name: Verify released version and health
         env:
-          EXPECTED_TAG: ${{ github.ref_name }}
+          EXPECTED_TAG: >-
+            ${{
+              github.event_name == 'workflow_dispatch' &&
+              inputs.release_tag ||
+              github.ref_name
+            }}
         run: |
           output=$(supplychain version)
           printf '%s\n' "$output"
