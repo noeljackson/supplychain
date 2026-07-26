@@ -15,6 +15,20 @@ import scrape_iocs
 
 
 class ScrapeIOCTest(unittest.TestCase):
+    def test_report_is_bounded_without_splitting_utf8(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "report.md"
+            scrape_iocs.write_report(
+                path,
+                ["# report"] + [f"- package-{index} \N{CHECK MARK}" for index in range(100)],
+                max_bytes=512,
+            )
+            body = path.read_text()
+            self.assertLessEqual(len(body.encode("utf-8")), 512)
+            self.assertTrue(body.startswith("# report\n"))
+            self.assertIn("Report truncated", body)
+            self.assertIn("Review the complete IOC file diff", body)
+
     def test_append_deduplicates_inline_provenance(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "packages.txt"
