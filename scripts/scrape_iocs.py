@@ -307,6 +307,32 @@ query($cutoff: DateTime!, $cursor: String) {
 # for malice.
 _ALL_VERSIONS_RE = re.compile(r"^>=\s*0(?:\.0(?:\.0)?)?$")
 _VER_RE = re.compile(r"\b\d+\.\d+\.\d+(?:-[A-Za-z0-9.\-]+)?\b")
+MAX_REPORT_BYTES = 60 * 1024
+REPORT_TRUNCATION_NOTICE = (
+    "\n_Report truncated to fit GitHub's pull-request body limit. "
+    "Review the complete IOC file diff before merging._\n"
+)
+
+
+def write_report(path: Path, lines: list[str], max_bytes: int = MAX_REPORT_BYTES) -> None:
+    """Write a UTF-8 report that remains below GitHub's PR body limit."""
+    complete = "\n".join(lines) + "\n"
+    if len(complete.encode("utf-8")) <= max_bytes:
+        path.write_text(complete)
+        return
+
+    notice_size = len(REPORT_TRUNCATION_NOTICE.encode("utf-8"))
+    if max_bytes <= notice_size:
+        raise ValueError("report size limit is too small for truncation notice")
+    kept: list[str] = []
+    used = 0
+    for line in lines:
+        encoded_size = len((line + "\n").encode("utf-8"))
+        if used + encoded_size + notice_size > max_bytes:
+            break
+        kept.append(line)
+        used += encoded_size
+    path.write_text("\n".join(kept) + "\n" + REPORT_TRUNCATION_NOTICE)
 
 def versions_from_range(rng: str) -> list[str]:
     """
@@ -350,7 +376,7 @@ def main() -> int:
             "",
             "No IOC files were changed.",
         ])
-        args.report.write_text("\n".join(summary) + "\n")
+        write_report(args.report, summary)
         print(str(exc), file=sys.stderr)
         return 2
 
@@ -431,7 +457,7 @@ def main() -> int:
     summary.append("## persistence-paths.txt — +0 (no scraper wired yet)")
     summary.append("## payload-filenames.txt  — +0 (no scraper wired yet)")
 
-    args.report.write_text("\n".join(summary) + "\n")
+    write_report(args.report, summary)
     return 0
 
 
