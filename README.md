@@ -89,7 +89,9 @@ files are ignored by default. Reviewed inline `gitleaks:allow` comments are the
 simplest explicit exception mechanism. Repositories with several narrowly
 documented public-value exceptions may opt in to a tracked config with
 `gitleaks-config`; the scanner rejects untracked, external, and symlinked policy
-files, and never honors `.gitleaksignore`.
+files selected by the scanned repository, and never honors `.gitleaksignore`.
+A trusted CI workflow may instead select an external fixed-name bundle with
+`trusted-policy-dir`; symlinked directories and files remain rejected.
 
 When `image` is set, the action creates an SPDX JSON SBOM with Syft and scans
 that exact document with Grype. The `sbom` action output is suitable for later

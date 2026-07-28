@@ -37,21 +37,22 @@ func cmdScan(g *Globals, args []string) int {
 	}
 
 	findings, err := scan.Run(scan.Options{
-		Target:             abs,
-		OpenIOC:            g.OpenIOC,
-		BinDir:             g.BinDir,
-		FreshnessDays:      g.FreshnessDays,
-		Registry:           registry.NewClient(filepath.Join(g.DataDir, "registry-cache")),
-		Signatures:         g.Signatures,
-		Maintainers:        g.Maintainers,
-		AcceptMaintainers:  g.AcceptMaintainers,
-		MaintainerBaseDir:  filepath.Join(g.DataDir, "maintainers"),
-		MaintainerBaseline: g.MaintainerBaseline,
-		TyposquatDistance:  g.TyposquatDistance,
-		OSMCachePath:       filepath.Join(g.DataDir, "osm-cache.json"),
-		RequireOSV:         g.FailOnAdvisory,
-		RequireComplete:    g.FailOnAdvisory,
-		SourcePolicy:       g.SourcePolicy,
+		Target:              abs,
+		OpenIOC:             g.OpenIOC,
+		BinDir:              g.BinDir,
+		FreshnessDays:       g.FreshnessDays,
+		Registry:            registry.NewClient(filepath.Join(g.DataDir, "registry-cache")),
+		Signatures:          g.Signatures,
+		Maintainers:         g.Maintainers,
+		AcceptMaintainers:   g.AcceptMaintainers,
+		MaintainerBaseDir:   filepath.Join(g.DataDir, "maintainers"),
+		MaintainerBaseline:  g.MaintainerBaseline,
+		TyposquatDistance:   g.TyposquatDistance,
+		OSMCachePath:        filepath.Join(g.DataDir, "osm-cache.json"),
+		RequireOSV:          g.FailOnAdvisory,
+		RequireComplete:     g.FailOnAdvisory,
+		SourcePolicy:        g.SourcePolicy,
+		TrustedSourcePolicy: g.TrustedPolicyDir != "" && g.SourcePolicy != "",
 	})
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "scan error:", err)

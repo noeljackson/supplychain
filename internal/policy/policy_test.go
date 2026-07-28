@@ -18,7 +18,7 @@ func TestLoadRequiresContainedTrackedRegularPolicy(t *testing.T) {
 	repo := initPolicyRepo(t)
 	writePolicy(t, repo, validPolicy("2026-07-26"))
 
-	loaded, err := Load(repo, "", policyNow)
+	loaded, err := Load(repo, "", false, policyNow)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -28,7 +28,7 @@ func TestLoadRequiresContainedTrackedRegularPolicy(t *testing.T) {
 
 	untracked := initPolicyRepo(t)
 	writePolicyFile(t, untracked, validPolicy("2026-07-26"))
-	if _, err := Load(untracked, "", policyNow); err == nil ||
+	if _, err := Load(untracked, "", false, policyNow); err == nil ||
 		!strings.Contains(err.Error(), "tracked") {
 		t.Fatalf("expected untracked rejection, got %v", err)
 	}
@@ -37,7 +37,7 @@ func TestLoadRequiresContainedTrackedRegularPolicy(t *testing.T) {
 	if err := os.WriteFile(outside, []byte(validPolicy("2026-07-26")), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := Load(repo, outside, policyNow); err == nil ||
+	if _, err := Load(repo, outside, false, policyNow); err == nil ||
 		!strings.Contains(err.Error(), "contained") {
 		t.Fatalf("expected containment rejection, got %v", err)
 	}
@@ -53,7 +53,7 @@ func TestLoadRequiresContainedTrackedRegularPolicy(t *testing.T) {
 	if err := os.Symlink("real.json", policyPath); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := Load(repo, "", policyNow); err == nil ||
+	if _, err := Load(repo, "", false, policyNow); err == nil ||
 		!strings.Contains(err.Error(), "non-symlinked") {
 		t.Fatalf("expected symlink rejection, got %v", err)
 	}
@@ -77,11 +77,28 @@ func TestLoadRejectsMalformedAndExpiredPolicy(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			repo := initPolicyRepo(t)
 			writePolicy(t, repo, testCase.body)
-			_, err := Load(repo, "", policyNow)
+			_, err := Load(repo, "", false, policyNow)
 			if err == nil || !strings.Contains(err.Error(), testCase.want) {
 				t.Fatalf("expected %q rejection, got %v", testCase.want, err)
 			}
 		})
+	}
+}
+
+func TestLoadAcceptsExplicitTrustedPolicyOutsideTarget(t *testing.T) {
+	repo := initPolicyRepo(t)
+	outside := filepath.Join(t.TempDir(), "source-policy.json")
+	if err := os.WriteFile(outside, []byte(validPolicy("2026-07-26")), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	loaded, err := Load(repo, outside, true, policyNow)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.Identity.Name != "trusted-ci-source-policy" ||
+		loaded.Identity.Path != "source-policy.json" {
+		t.Fatalf("identity = %+v", loaded.Identity)
 	}
 }
 

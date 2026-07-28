@@ -40,7 +40,7 @@ func cmdVerifyBun(g *Globals, args []string) int {
 	}
 	baselinePath := *baseline
 	baselinePath, err = bunverify.ResolveReviewedBaseline(
-		filepath.Dir(lockfile), baselinePath,
+		filepath.Dir(lockfile), baselinePath, false,
 	)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "verify-bun:", err)

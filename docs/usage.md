@@ -47,6 +47,9 @@ supplychain ci --policy=strict .
 # Opt in to one reviewed, tracked repository policy
 supplychain ci --policy=strict --gitleaks-config=.gitleaks.toml .
 
+# Let a security-owned workflow supply policy outside the scanned repository
+supplychain ci --policy=strict --trusted-policy-dir=/run/security-policy .
+
 # General repository/dependency/IOC scan
 supplychain scan .
 
@@ -69,6 +72,11 @@ supplychain scan-all "$HOME/src"
 supplychain doctor
 supplychain update
 ```
+
+The trusted policy directory may contain `source-policy.json`,
+`gitleaks.toml`, and `bun-baseline.json`. Only those fixed-name, regular,
+non-symlinked files are accepted. It cannot be combined with
+`--source-policy` or `--gitleaks-config`.
 
 Generate a pinned caller workflow for either forge:
 
@@ -218,3 +226,6 @@ retry; do not disable checksum or signature checks.
 `SUPPLYCHAIN_OSM_TOKEN` optionally enriches npm malware indicators from
 OpenSourceMalware. Do not add it to GitHub Actions just for the standard strict
 gate: pinned CI is intentionally deterministic and does not require that token.
+Security-owned workflows that intentionally want live enrichment can add
+`--refresh-osm`; that explicit mode fails closed if the token is absent or the
+refresh fails.
