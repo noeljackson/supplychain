@@ -31,6 +31,14 @@ inputs:
     description: Deterministic tracked maintainer baseline path inside the scan target
     required: false
     default: ""
+  trusted-policy-dir:
+    description: External fixed-name policy bundle controlled by the invoking workflow
+    required: false
+    default: ""
+  refresh-osm:
+    description: Refresh OSM malware intelligence with SUPPLYCHAIN_OSM_TOKEN before scanning
+    required: false
+    default: "false"
   scan-source:
     description: Run repository, dependency, OSV, Bun, Gitleaks, and zizmor checks
     required: false
@@ -110,6 +118,8 @@ runs:
         INPUT_GITLEAKS_CONFIG: ${{ inputs.gitleaks-config }}
         INPUT_SOURCE_POLICY: ${{ inputs.source-policy }}
         INPUT_MAINTAINER_BASELINE: ${{ inputs.maintainer-baseline }}
+        INPUT_TRUSTED_POLICY_DIR: ${{ inputs.trusted-policy-dir }}
+        INPUT_REFRESH_OSM: ${{ inputs.refresh-osm }}
         SUPPLYCHAIN_BIN_DIR: ${{ runner.temp }}/supplychain-bin
       run: |
         set -euo pipefail
@@ -124,12 +134,22 @@ runs:
         if [ -n "$INPUT_MAINTAINER_BASELINE" ]; then
           policy_args+=(--maintainer-baseline="$INPUT_MAINTAINER_BASELINE")
         fi
+        if [ -n "$INPUT_TRUSTED_POLICY_DIR" ]; then
+          policy_args+=(--trusted-policy-dir="$INPUT_TRUSTED_POLICY_DIR")
+        fi
+        refresh_args=()
+        case "$INPUT_REFRESH_OSM" in
+          true) refresh_args+=(--refresh-osm) ;;
+          false) ;;
+          *) echo "refresh-osm must be true or false" >&2; exit 2 ;;
+        esac
         "$RUNNER_TEMP/supplychain-action" ci \
           --policy="$INPUT_POLICY" \
           --minimum-age-days="$INPUT_MINIMUM_AGE" \
           --baseline="$INPUT_BASELINE" \
           "${config_args[@]}" \
           "${policy_args[@]}" \
+          "${refresh_args[@]}" \
           "$INPUT_PATH"
     - name: Inventory and scan OCI image
       id: image
