@@ -86,9 +86,11 @@ func Builtin() Loaded {
 	}
 }
 
-// Load returns the built-in policy when no policy file exists. A present policy
-// must be a small, regular, non-symlinked Git-tracked file contained by target.
-func Load(target, requested string, now time.Time) (Loaded, error) {
+// Load returns the built-in policy when no policy file exists. A present
+// repository policy must be a small, regular, non-symlinked Git-tracked file
+// contained by target. A trusted CI policy may be external when the caller has
+// already resolved it from an explicit trusted policy bundle.
+func Load(target, requested string, trusted bool, now time.Time) (Loaded, error) {
 	if requested == "" {
 		requested = DefaultPath
 	}
@@ -102,7 +104,9 @@ func Load(target, requested string, now time.Time) (Loaded, error) {
 	}
 	policyPath = filepath.Clean(policyPath)
 	relTarget, err := filepath.Rel(targetAbs, policyPath)
-	if err != nil || relTarget == ".." || strings.HasPrefix(relTarget, ".."+string(os.PathSeparator)) {
+	insideTarget := err == nil && relTarget != ".." &&
+		!strings.HasPrefix(relTarget, ".."+string(os.PathSeparator))
+	if !trusted && !insideTarget {
 		return Loaded{}, errors.New("source policy must be contained by the scan target")
 	}
 	info, err := os.Lstat(policyPath)
@@ -118,8 +122,10 @@ func Load(target, requested string, now time.Time) (Loaded, error) {
 	if info.Size() > maxSize {
 		return Loaded{}, fmt.Errorf("source policy exceeds %d bytes", maxSize)
 	}
-	if err := requireTracked(targetAbs, policyPath); err != nil {
-		return Loaded{}, err
+	if !trusted {
+		if err := requireTracked(targetAbs, policyPath); err != nil {
+			return Loaded{}, err
+		}
 	}
 	body, err := os.ReadFile(policyPath)
 	if err != nil {
@@ -138,11 +144,17 @@ func Load(target, requested string, now time.Time) (Loaded, error) {
 		return Loaded{}, err
 	}
 	sum := sha256.Sum256(body)
+	identityName := "repository-source-policy"
+	identityPath := filepath.ToSlash(relTarget)
+	if trusted {
+		identityName = "trusted-ci-source-policy"
+		identityPath = filepath.Base(policyPath)
+	}
 	return Loaded{
 		Document: document,
 		Identity: Identity{
-			Name:   "repository-source-policy",
-			Path:   filepath.ToSlash(relTarget),
+			Name:   identityName,
+			Path:   identityPath,
 			SHA256: hex.EncodeToString(sum[:]),
 		},
 	}, nil

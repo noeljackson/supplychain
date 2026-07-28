@@ -392,7 +392,7 @@ func ReadBaseline(path string) (Baseline, error) {
 // ResolveReviewedBaseline accepts only a small, tracked, regular baseline
 // contained by target. Missing paths are returned unchanged so
 // --write-baseline can create a new review candidate.
-func ResolveReviewedBaseline(target, path string) (string, error) {
+func ResolveReviewedBaseline(target, path string, trusted bool) (string, error) {
 	if path == "" {
 		return "", nil
 	}
@@ -406,7 +406,8 @@ func ResolveReviewedBaseline(target, path string) (string, error) {
 	}
 	candidate = filepath.Clean(candidate)
 	relative, err := filepath.Rel(target, candidate)
-	if err != nil || relative == ".." || strings.HasPrefix(relative, ".."+string(os.PathSeparator)) {
+	if !trusted && (err != nil || relative == ".." ||
+		strings.HasPrefix(relative, ".."+string(os.PathSeparator))) {
 		return "", errors.New("Bun baseline must be inside the verification target")
 	}
 	info, err := os.Lstat(candidate)
@@ -421,6 +422,9 @@ func ResolveReviewedBaseline(target, path string) (string, error) {
 	}
 	if info.Size() > maxBaselineSize {
 		return "", fmt.Errorf("Bun baseline exceeds %d bytes", maxBaselineSize)
+	}
+	if trusted {
+		return candidate, nil
 	}
 	rootOutput, err := exec.Command("git", "-C", target, "rev-parse", "--show-toplevel").Output()
 	if err != nil {

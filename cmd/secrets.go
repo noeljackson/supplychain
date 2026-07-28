@@ -31,7 +31,11 @@ func cmdSecrets(g *Globals, args []string) int {
 		fmt.Fprintln(os.Stderr, "secrets:", err)
 		return report.ExitOperational
 	}
-	if err := secrets.Run(abs, g.BinDir, *config); err != nil {
+	run := secrets.Run
+	if g.TrustedPolicyDir != "" {
+		run = secrets.RunTrusted
+	}
+	if err := run(abs, g.BinDir, *config); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		if errors.Is(err, secrets.ErrFindings) {
 			return report.ExitFindings
