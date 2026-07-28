@@ -62,10 +62,6 @@ type Globals struct {
 	// SourcePolicy is a tracked advisory policy path within the scan target.
 	SourcePolicy string
 
-	// TrustedPolicyDir is an explicit policy bundle controlled by the invoking
-	// CI workflow rather than by the repository being scanned.
-	TrustedPolicyDir string
-
 	// TyposquatDistance overrides the default Levenshtein threshold (1).
 	// Distance 2 catches double-typos but pulls in false positives like
 	// vercel/parcel, jose/joi. Set via --typosquat-distance=N.

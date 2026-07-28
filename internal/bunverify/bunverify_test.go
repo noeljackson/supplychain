@@ -109,17 +109,17 @@ func TestResolveReviewedBaselineRejectsHostilePaths(t *testing.T) {
 	if err := os.WriteFile(baseline, []byte(`{"version":1,"packages":{}}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := ResolveReviewedBaseline(target, baseline, false); err == nil ||
+	if _, err := ResolveReviewedBaseline(target, baseline); err == nil ||
 		!strings.Contains(err.Error(), "tracked") {
 		t.Fatalf("expected untracked rejection, got %v", err)
 	}
 	if err := exec.Command("git", "-C", target, "add", ".supplychain/bun-baseline.json").Run(); err != nil {
 		t.Fatal(err)
 	}
-	if resolved, err := ResolveReviewedBaseline(target, baseline, false); err != nil || resolved != baseline {
+	if resolved, err := ResolveReviewedBaseline(target, baseline); err != nil || resolved != baseline {
 		t.Fatalf("tracked baseline = %q, %v", resolved, err)
 	}
-	if _, err := ResolveReviewedBaseline(target, filepath.Join(t.TempDir(), "outside.json"), false); err == nil ||
+	if _, err := ResolveReviewedBaseline(target, filepath.Join(t.TempDir(), "outside.json")); err == nil ||
 		!strings.Contains(err.Error(), "inside") {
 		t.Fatalf("expected outside rejection, got %v", err)
 	}
@@ -133,24 +133,9 @@ func TestResolveReviewedBaselineRejectsHostilePaths(t *testing.T) {
 	if err := os.Symlink("real.json", baseline); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := ResolveReviewedBaseline(target, baseline, false); err == nil ||
+	if _, err := ResolveReviewedBaseline(target, baseline); err == nil ||
 		!strings.Contains(err.Error(), "regular") {
 		t.Fatalf("expected symlink rejection, got %v", err)
-	}
-}
-
-func TestResolveReviewedBaselineAcceptsExplicitTrustedFile(t *testing.T) {
-	target := t.TempDir()
-	baseline := filepath.Join(t.TempDir(), "bun-baseline.json")
-	if err := os.WriteFile(baseline, []byte(`{"version":1,"packages":{}}`), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	resolved, err := ResolveReviewedBaseline(target, baseline, true)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if resolved != baseline {
-		t.Fatalf("resolved = %q", resolved)
 	}
 }
 
