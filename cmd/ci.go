@@ -11,7 +11,6 @@ import (
 	"github.com/noeljackson/supplychain/internal/bunverify"
 	"github.com/noeljackson/supplychain/internal/osm"
 	"github.com/noeljackson/supplychain/internal/report"
-	"github.com/noeljackson/supplychain/internal/trustedpolicy"
 )
 
 func cmdCI(g *Globals, args []string) int {
@@ -21,10 +20,6 @@ func cmdCI(g *Globals, args []string) int {
 	minimumAge := fs.Int("minimum-age-days", 7, "minimum age for Bun packages")
 	baseline := fs.String("baseline", ".supplychain/bun-baseline.json", "Bun baseline path")
 	gitleaksConfig := fs.String("gitleaks-config", "", "explicit reviewed Gitleaks config inside the target")
-	trustedPolicyDir := fs.String(
-		"trusted-policy-dir", "",
-		"external policy bundle controlled by the invoking CI workflow",
-	)
 	refreshOSM := fs.Bool(
 		"refresh-osm", false,
 		"refresh the OSM malware cache using SUPPLYCHAIN_OSM_TOKEN before scanning",
@@ -44,29 +39,6 @@ func cmdCI(g *Globals, args []string) int {
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "ci:", err)
 		return report.ExitOperational
-	}
-
-	trustedBaseline := false
-	if *trustedPolicyDir != "" {
-		bundle, err := trustedpolicy.Resolve(*trustedPolicyDir)
-		if err != nil {
-			fmt.Fprintln(os.Stderr, "ci:", err)
-			return report.ExitOperational
-		}
-		if g.SourcePolicy != "" || *gitleaksConfig != "" {
-			fmt.Fprintln(
-				os.Stderr,
-				"ci: trusted-policy-dir cannot be combined with source-policy or gitleaks-config",
-			)
-			return report.ExitUsage
-		}
-		g.TrustedPolicyDir = *trustedPolicyDir
-		g.SourcePolicy = bundle.SourcePolicy
-		*gitleaksConfig = bundle.Gitleaks
-		if bundle.BunBaseline != "" {
-			*baseline = bundle.BunBaseline
-			trustedBaseline = true
-		}
 	}
 
 	if *refreshOSM {
@@ -108,7 +80,7 @@ func cmdCI(g *Globals, args []string) int {
 		return combinedExit(scanExit, workflowsExit, secretsExit)
 	}
 	verifyArgs := []string{fmt.Sprintf("--minimum-age-days=%d", *minimumAge)}
-	baselinePath, baselineErr := bunverify.ResolveReviewedBaseline(abs, *baseline, trustedBaseline)
+	baselinePath, baselineErr := bunverify.ResolveReviewedBaseline(abs, *baseline)
 	if baselineErr != nil {
 		fmt.Fprintln(os.Stderr, "ci:", baselineErr)
 		return report.ExitOperational

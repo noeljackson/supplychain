@@ -77,10 +77,6 @@ type Options struct {
 	// .supplychain/source-policy.json when present, otherwise the built-in
 	// all-advisories policy.
 	SourcePolicy string
-
-	// TrustedSourcePolicy permits SourcePolicy to come from an explicitly
-	// selected trusted CI policy bundle outside Target.
-	TrustedSourcePolicy bool
 }
 
 // Findings is the aggregated result of a scan.
@@ -169,9 +165,7 @@ func Run(opts Options) (f Findings, err error) {
 		return f, errors.New("scan: OpenIOC is required")
 	}
 	checkStarted := time.Now()
-	sourcePolicy, err := policy.Load(
-		opts.Target, opts.SourcePolicy, opts.TrustedSourcePolicy, time.Now(),
-	)
+	sourcePolicy, err := policy.Load(opts.Target, opts.SourcePolicy, time.Now())
 	if err != nil {
 		return f, fmt.Errorf("scan: %w", err)
 	}

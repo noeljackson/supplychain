@@ -22,16 +22,6 @@ var ErrFindings = errors.New("secret findings")
 // a non-zero exit. Repository configuration is ignored unless config is an
 // explicit, tracked path inside target.
 func Run(target, binDir, config string) error {
-	return run(target, binDir, config, false)
-}
-
-// RunTrusted accepts an external Gitleaks configuration that has already been
-// selected from an explicit trusted CI policy bundle.
-func RunTrusted(target, binDir, config string) error {
-	return run(target, binDir, config, true)
-}
-
-func run(target, binDir, config string, trustedConfig bool) error {
 	if target == "" {
 		return errors.New("secrets: target is required")
 	}
@@ -41,7 +31,7 @@ func run(target, binDir, config string, trustedConfig bool) error {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), scanTimeout)
 	defer cancel()
-	configPath, configRel, err := resolveConfig(ctx, target, config, trustedConfig)
+	configPath, configRel, err := resolveConfig(ctx, target, config)
 	if err != nil {
 		return err
 	}
@@ -178,7 +168,7 @@ func stageGitVisible(ctx context.Context, target, explicitConfigRel string) (str
 // resolveConfig accepts only an explicitly selected, tracked, regular file
 // inside target. The default remains immune to repository-owned Gitleaks
 // configuration, and .gitleaksignore is never honored.
-func resolveConfig(ctx context.Context, target, config string, trusted bool) (string, string, error) {
+func resolveConfig(ctx context.Context, target, config string) (string, string, error) {
 	if config == "" {
 		return "", "", nil
 	}
@@ -205,9 +195,6 @@ func resolveConfig(ctx context.Context, target, config string, trusted bool) (st
 	realCandidate, err := filepath.EvalSymlinks(candidate)
 	if err != nil {
 		return "", "", fmt.Errorf("secrets: resolve Gitleaks config links: %w", err)
-	}
-	if trusted {
-		return realCandidate, "", nil
 	}
 	realRel, err := filepath.Rel(realTarget, realCandidate)
 	if err != nil || outside(realRel) {
