@@ -47,9 +47,6 @@ supplychain ci --policy=strict .
 # Opt in to one reviewed, tracked repository policy
 supplychain ci --policy=strict --gitleaks-config=.gitleaks.toml .
 
-# Let a security-owned workflow supply policy outside the scanned repository
-supplychain ci --policy=strict --trusted-policy-dir=/run/security-policy .
-
 # General repository/dependency/IOC scan
 supplychain scan .
 
@@ -72,11 +69,6 @@ supplychain scan-all "$HOME/src"
 supplychain doctor
 supplychain update
 ```
-
-The trusted policy directory may contain `source-policy.json`,
-`gitleaks.toml`, and `bun-baseline.json`. Only those fixed-name, regular,
-non-symlinked files are accepted. It cannot be combined with
-`--source-policy` or `--gitleaks-config`.
 
 Generate a pinned caller workflow for either forge:
 

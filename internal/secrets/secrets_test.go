@@ -245,24 +245,6 @@ func TestRunUsesExplicitTrackedConfig(t *testing.T) {
 	}
 }
 
-func TestResolveConfigAcceptsExplicitTrustedFile(t *testing.T) {
-	target := t.TempDir()
-	config := filepath.Join(t.TempDir(), "gitleaks.toml")
-	if err := os.WriteFile(config, []byte("[allowlist]\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-
-	resolved, relative, err := resolveConfig(
-		context.Background(), target, config, true,
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if resolved != config || relative != "" {
-		t.Fatalf("resolved = %q, relative = %q", resolved, relative)
-	}
-}
-
 func TestRunRejectsUntrackedConfig(t *testing.T) {
 	binDir := t.TempDir()
 	writeFakeGitleaks(t, binDir, filepath.Join(t.TempDir(), "gitleaks.log"), 0)
