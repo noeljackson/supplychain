@@ -12,6 +12,7 @@ import (
 	"github.com/noeljackson/supplychain/internal/drift"
 	"github.com/noeljackson/supplychain/internal/manifest"
 	"github.com/noeljackson/supplychain/internal/osv"
+	"github.com/noeljackson/supplychain/internal/vendorartifact"
 )
 
 func init() {
@@ -101,6 +102,13 @@ func TestFindingClassification(t *testing.T) {
 	}
 	if iocHit.HasAdvisoryHits() {
 		t.Fatal("IOC-only finding should not count as advisory-only")
+	}
+
+	vendoredHit := Findings{
+		Vendored: []vendorartifact.Issue{{Code: "vendored-digest-mismatch", Package: "pkg@1.0.0"}},
+	}
+	if !vendoredHit.HasSupplyChainHits() {
+		t.Fatal("vendored artifact verification failures should count as supply-chain indicators")
 	}
 }
 

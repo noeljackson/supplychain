@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/noeljackson/supplychain/internal/registry"
 )
 
 func TestParseLockfile(t *testing.T) {
@@ -82,7 +84,7 @@ func TestParseLockfileValidatesEveryDuplicateSource(t *testing.T) {
 func TestSignatureVerification(t *testing.T) {
 	// Registry key parsing and real signature verification are covered by the
 	// integration command; this unit test keeps malformed input fail-closed.
-	if verifySignature(nil, "not-base64", "pkg@1.0.0:sha512-x") {
+	if registry.VerifySignature("not-a-key", "not-base64", "pkg@1.0.0:sha512-x") {
 		t.Fatal("malformed signature unexpectedly verified")
 	}
 }

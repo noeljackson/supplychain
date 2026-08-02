@@ -62,6 +62,7 @@
     "freshness": [],
     "typosquat": [],
     "npm_signatures": [],
+    "vendored_npm": [],
     "maintainers": [],
     "lockfile_drift": [],
     "suppressed": []
