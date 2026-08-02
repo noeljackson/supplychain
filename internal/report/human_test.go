@@ -9,6 +9,7 @@ import (
 	"github.com/noeljackson/supplychain/internal/manifest"
 	"github.com/noeljackson/supplychain/internal/osv"
 	"github.com/noeljackson/supplychain/internal/scan"
+	"github.com/noeljackson/supplychain/internal/vendorartifact"
 )
 
 func TestHumanAdvisoryOnlyDoesNotFailByDefault(t *testing.T) {
@@ -56,6 +57,25 @@ func TestHumanSupplyChainHitFails(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), "err supply-chain indicators") {
 		t.Fatalf("missing supply-chain header in output:\n%s", out.String())
+	}
+}
+
+func TestHumanRendersVendoredNPMFailure(t *testing.T) {
+	f := scan.Findings{
+		Target: "/repo",
+		Vendored: []vendorartifact.Issue{{
+			Code: "vendored-digest-mismatch", Package: "htmx.org@2.0.10",
+			Path: "vendor/htmx.min.js", Message: "checked-in artifact drifted",
+		}},
+	}
+	var out bytes.Buffer
+	if code := Human(&out, f, Options{}); code != ExitFindings {
+		t.Fatalf("exit code = %d, want %d", code, ExitFindings)
+	}
+	for _, want := range []string{"Vendored npm artifacts", "htmx.org@2.0.10", "vendored-digest-mismatch"} {
+		if !strings.Contains(out.String(), want) {
+			t.Fatalf("missing %q in output:\n%s", want, out.String())
+		}
 	}
 }
 

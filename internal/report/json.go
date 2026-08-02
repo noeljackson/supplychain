@@ -18,6 +18,7 @@ import (
 	"github.com/noeljackson/supplychain/internal/scripts"
 	"github.com/noeljackson/supplychain/internal/typosquat"
 	"github.com/noeljackson/supplychain/internal/update"
+	"github.com/noeljackson/supplychain/internal/vendorartifact"
 )
 
 const (
@@ -69,6 +70,7 @@ type FindingSet struct {
 	Freshness   []freshness.Hit        `json:"freshness"`
 	Typosquat   []typosquat.Hit        `json:"typosquat"`
 	Signatures  []npmsig.Hit           `json:"npm_signatures"`
+	Vendored    []vendorartifact.Issue `json:"vendored_npm"`
 	Maintainers []maintainer.Hit       `json:"maintainers"`
 	Drift       []drift.Hit            `json:"lockfile_drift"`
 	Suppressed  []policy.Suppressed    `json:"suppressed"`
@@ -144,6 +146,7 @@ func NewEnvelope(f scan.Findings, opts Options) Envelope {
 			Freshness:   nonNil(f.Freshness),
 			Typosquat:   nonNil(f.Typosquat),
 			Signatures:  nonNil(f.Signatures),
+			Vendored:    nonNil(f.Vendored),
 			Maintainers: nonNil(f.Maintainers),
 			Drift:       nonNil(f.Drift),
 			Suppressed:  nonNil(f.Suppressed),

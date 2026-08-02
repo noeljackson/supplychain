@@ -6,6 +6,11 @@ snapshot identity, helper versions, outcome, per-check status/timing,
 diagnostics, total timing, active findings, and policy-suppressed findings.
 Consumers must reject unsupported `schema_version` values.
 
+The `findings.vendored_npm` array contains stable `code`, `package`, `path`,
+and `message` fields for configured npm artifacts that fail signature,
+integrity, archive-safety, or byte-identity verification. Operational registry
+failures appear under the required `vendored_npm` coverage check instead.
+
 `scan-all --json` emits one aggregate JSON document with a `reports` array and
 an `errors` array. It never concatenates per-repository JSON objects.
 

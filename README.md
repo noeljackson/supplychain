@@ -4,7 +4,10 @@
 scanner. Repository scans detect known malicious packages, lockfile drift,
 install hooks, dropped payloads, maintainer changes, fresh npm releases, and
 strict Bun registry metadata without executing code from the repository being
-inspected. Host persistence and shell-history checks are isolated under
+inspected. A tracked vendored-artifact manifest can additionally bind copied
+browser assets to exact members of signed npm registry tarballs; undeclared
+minified web assets and runtime package-CDN references fail closed. Host
+persistence and shell-history checks are isolated under
 `audit-system`, so repository findings stay scoped to the selected target.
 
 ## Start here
@@ -16,6 +19,8 @@ inspected. Host persistence and shell-history checks are isolated under
   per-repository workflows plus organization/instance-wide scoped enforcement.
 - [Usage guide](docs/usage.md) — local installation, commands, Bun baselines,
   secret findings, image scans, and troubleshooting.
+- [Vendored npm artifacts](docs/vendored-artifacts.md) — verify copied browser
+  assets against exact, signed npm tarball members.
 
 ## GitHub Action
 

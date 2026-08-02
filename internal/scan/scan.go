@@ -22,6 +22,7 @@ import (
 	"github.com/noeljackson/supplychain/internal/registry"
 	"github.com/noeljackson/supplychain/internal/scripts"
 	"github.com/noeljackson/supplychain/internal/typosquat"
+	"github.com/noeljackson/supplychain/internal/vendorartifact"
 )
 
 // Options configures a scan.
@@ -91,6 +92,7 @@ type Findings struct {
 	Freshness   []freshness.Hit        `json:"freshness_hits"`
 	Typosquat   []typosquat.Hit        `json:"typosquat_hits"`
 	Signatures  []npmsig.Hit           `json:"signature_hits"`
+	Vendored    []vendorartifact.Issue `json:"vendored_npm_hits"`
 	Maintainers []maintainer.Hit       `json:"maintainer_changes"`
 	Drift       []drift.Hit            `json:"drift_hits"`
 	Suppressed  []policy.Suppressed    `json:"suppressed_findings"`
@@ -123,6 +125,7 @@ func (f Findings) HasSupplyChainHits() bool {
 		len(f.Payloads) > 0 ||
 		len(f.Typosquat) > 0 ||
 		len(f.Signatures) > 0 ||
+		len(f.Vendored) > 0 ||
 		len(f.Maintainers) > 0
 }
 
@@ -230,6 +233,19 @@ func Run(opts Options) (f Findings, err error) {
 		f.Coverage.Set("payload_ioc", check.StatusCompleted, opts.RequireComplete, "")
 	}
 	f.Coverage.SetDuration("payload_ioc", elapsedMS(checkStarted))
+
+	checkStarted = time.Now()
+	vendored, vendorErr := vendorartifact.Verify(opts.Target, opts.Registry)
+	switch {
+	case errors.Is(vendorErr, vendorartifact.ErrNotApplicable):
+		f.Coverage.Set("vendored_npm", check.StatusNotApplicable, opts.RequireComplete, "")
+	case vendorErr != nil:
+		f.Coverage.Set("vendored_npm", check.StatusFailed, opts.RequireComplete, vendorErr.Error())
+	default:
+		f.Vendored = vendored.Issues
+		f.Coverage.Set("vendored_npm", check.StatusCompleted, opts.RequireComplete, "")
+	}
+	f.Coverage.SetDuration("vendored_npm", elapsedMS(checkStarted))
 	f.Coverage.Set(
 		"host_persistence",
 		check.StatusDisabled,
@@ -425,6 +441,15 @@ func SortFindings(f *Findings) {
 		return f.Signatures[i].Name < f.Signatures[j].Name ||
 			(f.Signatures[i].Name == f.Signatures[j].Name &&
 				f.Signatures[i].Version < f.Signatures[j].Version)
+	})
+	sort.Slice(f.Vendored, func(i, j int) bool {
+		if f.Vendored[i].Package != f.Vendored[j].Package {
+			return f.Vendored[i].Package < f.Vendored[j].Package
+		}
+		if f.Vendored[i].Path != f.Vendored[j].Path {
+			return f.Vendored[i].Path < f.Vendored[j].Path
+		}
+		return f.Vendored[i].Code < f.Vendored[j].Code
 	})
 	sort.Slice(f.Maintainers, func(i, j int) bool {
 		return f.Maintainers[i].Name < f.Maintainers[j].Name

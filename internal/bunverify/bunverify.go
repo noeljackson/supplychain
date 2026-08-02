@@ -4,10 +4,6 @@
 package bunverify
 
 import (
-	"crypto/ecdsa"
-	"crypto/sha256"
-	"crypto/x509"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -86,12 +82,9 @@ func Verify(opts Options) (Result, error) {
 	if err != nil {
 		return result, fmt.Errorf("fetch npm signing keys: %w", err)
 	}
-	keyring := make(map[string]*ecdsa.PublicKey, len(keys))
+	keyring := make(map[string]string, len(keys))
 	for _, key := range keys {
-		pub, err := parseSigningKey(key.Key)
-		if err == nil {
-			keyring[key.KeyID] = pub
-		}
+		keyring[key.KeyID] = key.Key
 	}
 
 	var previous Baseline
@@ -130,8 +123,8 @@ func Verify(opts Options) (Result, error) {
 
 		verifiedKey := ""
 		for _, sig := range meta.Dist.Signatures {
-			pub := keyring[sig.KeyID]
-			if pub != nil && verifySignature(pub, sig.Sig, label+":"+meta.Dist.Integrity) {
+			key := keyring[sig.KeyID]
+			if key != "" && registry.VerifySignature(key, sig.Sig, label+":"+meta.Dist.Integrity) {
 				verifiedKey = sig.KeyID
 				break
 			}
@@ -213,31 +206,6 @@ func sameStrings(a, b []string) bool {
 		}
 	}
 	return true
-}
-
-func parseSigningKey(encoded string) (*ecdsa.PublicKey, error) {
-	der, err := base64.StdEncoding.DecodeString(encoded)
-	if err != nil {
-		return nil, err
-	}
-	parsed, err := x509.ParsePKIXPublicKey(der)
-	if err != nil {
-		return nil, err
-	}
-	pub, ok := parsed.(*ecdsa.PublicKey)
-	if !ok {
-		return nil, errors.New("npm signing key is not ECDSA")
-	}
-	return pub, nil
-}
-
-func verifySignature(pub *ecdsa.PublicKey, encodedSig, message string) bool {
-	sig, err := base64.StdEncoding.DecodeString(encodedSig)
-	if err != nil {
-		return false
-	}
-	digest := sha256.Sum256([]byte(message))
-	return ecdsa.VerifyASN1(pub, digest[:], sig)
 }
 
 func ParseLockfile(path string) ([]Package, []Issue, error) {

@@ -108,6 +108,17 @@ func Human(w io.Writer, f scan.Findings, opts Options) int {
 			fmt.Fprintf(w, "  %s@%s  %s  (%s)\n", h.Name, h.Version, h.Reason, h.Resolved)
 		}
 	}
+	if len(f.Vendored) > 0 {
+		fmt.Fprintln(w)
+		fmt.Fprintln(w, "Vendored npm artifacts that failed registry verification:")
+		for _, hit := range f.Vendored {
+			location := hit.Path
+			if location == "" {
+				location = "registry metadata"
+			}
+			fmt.Fprintf(w, "  %s  %s  %s (%s)\n", hit.Package, hit.Code, hit.Message, location)
+		}
+	}
 	if len(f.Maintainers) > 0 {
 		fmt.Fprintln(w)
 		fmt.Fprintln(w, "Maintainer-set changes since last scan:")
