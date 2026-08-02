@@ -137,6 +137,15 @@ Without `--maintainer-baseline`, the opt-in `--maintainers` check uses local
 state under the data directory. Neither form advances after a finding unless
 `--accept-maintainers` is explicitly supplied.
 
+## Vendored npm browser assets
+
+Repositories that copy a file out of an npm package can commit
+`.supplychain/vendor-artifacts.json`. Normal `scan` and `ci` commands discover
+the manifest automatically. The check verifies the npm registry signature and
+tarball integrity, extracts only the exact bounded member, and compares it with
+the tracked local file. See [Vendored npm artifacts](vendored-artifacts.md) for
+the schema and update procedure.
+
 ## Secret findings
 
 Gitleaks runs with redaction and analytics disabled. It scans files visible to
