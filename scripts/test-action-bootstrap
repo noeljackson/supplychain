@@ -1,0 +1,68 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+grep -Fxq 'go 1.26.5' "${repo_root}/go.mod"
+temp_dir="$(mktemp -d)"
+tool_cache="$(mktemp -d "${repo_root}/.action-bootstrap-toolcache.XXXXXXXX")"
+cleanup() {
+  rm -rf -- "$temp_dir"
+  rm -rf -- "$tool_cache"
+}
+trap cleanup EXIT
+
+fixture_root="${temp_dir}/fixture"
+archive="${temp_dir}/go.tgz"
+bootstrap="${temp_dir}/setup-go"
+mkdir -p "${fixture_root}/go/bin"
+
+cat >"${fixture_root}/go/bin/go" <<'EOF'
+#!/usr/bin/env bash
+if [[ "${1:-}" == 'version' ]]; then
+  printf 'go version go1.26.5 linux/amd64\n'
+  exit 0
+fi
+exit 2
+EOF
+chmod 0700 "${fixture_root}/go/bin/go"
+tar --create --gzip --file "$archive" -C "$fixture_root" go
+archive_sha256="$(sha256sum "$archive" | awk '{print $1}')"
+sed \
+  -e "s|https://go.dev/dl/go1.26.5.linux-amd64.tar.gz|file://${archive}|" \
+  -e "s|5c2c3b16caefa1d968a94c1daca04a7ca301a496d9b086e17ad77bb81393f053|${archive_sha256}|" \
+  "${repo_root}/scripts/setup-go" >"$bootstrap"
+grep -Fq "file://${archive}" "$bootstrap"
+grep -Fq "$archive_sha256" "$bootstrap"
+
+run_bootstrap() {
+  local run_id="$1"
+  RUNNER_TEMP="${temp_dir}/runner" \
+    RUNNER_TOOL_CACHE="$tool_cache" \
+    GITHUB_RUN_ID="$run_id" \
+    GITHUB_RUN_ATTEMPT=1 \
+    GITHUB_PATH="${temp_dir}/${run_id}.path" \
+    bash "$bootstrap"
+}
+
+mkdir -p "${temp_dir}/runner"
+run_bootstrap push &
+push_pid=$!
+run_bootstrap pull-request &
+pull_request_pid=$!
+
+set +e
+wait "$push_pid"
+push_status=$?
+wait "$pull_request_pid"
+pull_request_status=$?
+set -e
+[[ "$push_status" -eq 0 ]]
+[[ "$pull_request_status" -eq 0 ]]
+
+for run_id in push pull-request; do
+  goroot="${tool_cache}/supplychain-go/1.26.5/${run_id}-1/go"
+  [[ -x "${goroot}/bin/go" ]]
+  [[ "$(<"${temp_dir}/${run_id}.path")" == "${goroot}/bin" ]]
+done
+
+printf 'concurrent Supplychain Go bootstrap: OK\n'
