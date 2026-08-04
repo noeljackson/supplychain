@@ -28,6 +28,11 @@ const (
 	envToken    = "SUPPLYCHAIN_OSM_TOKEN"
 	UserAgent   = "supplychain/dev (+https://github.com/noeljackson/supplychain)"
 	httpTimeout = 15 * time.Second
+
+	// A live intelligence refresh is allowed to outlast one transient gateway
+	// failure, but remains bounded by the caller's context (30 seconds in CI).
+	queryLatestAttempts       = 3
+	queryLatestInitialBackoff = 200 * time.Millisecond
 )
 
 // Token returns the bearer token from the environment, "" if unset.
@@ -181,10 +186,44 @@ func Refresh(ctx context.Context, dataDir string, ecosystems []string) (skipped 
 }
 
 func queryLatest(ctx context.Context, client *http.Client, token, eco string) ([]Threat, error) {
-	url := BaseURL + "/query-latest?ecosystem=" + eco
+	return queryLatestAt(ctx, client, token, eco, BaseURL)
+}
+
+func queryLatestAt(ctx context.Context, client *http.Client, token, eco, baseURL string) ([]Threat, error) {
+	var lastErr error
+	for attempt := 0; attempt < queryLatestAttempts; attempt++ {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+
+		threats, retryable, err := queryLatestOnce(ctx, client, token, eco, baseURL)
+		if err == nil {
+			return threats, nil
+		}
+		lastErr = err
+		if !retryable || attempt == queryLatestAttempts-1 {
+			return nil, err
+		}
+
+		delay := queryLatestInitialBackoff << attempt
+		timer := time.NewTimer(delay)
+		select {
+		case <-ctx.Done():
+			if !timer.Stop() {
+				<-timer.C
+			}
+			return nil, ctx.Err()
+		case <-timer.C:
+		}
+	}
+	return nil, lastErr
+}
+
+func queryLatestOnce(ctx context.Context, client *http.Client, token, eco, baseURL string) ([]Threat, bool, error) {
+	url := baseURL + "/query-latest?ecosystem=" + eco
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("User-Agent", UserAgent)
@@ -192,7 +231,10 @@ func queryLatest(ctx context.Context, client *http.Client, token, eco string) ([
 
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, err
+		if ctx.Err() != nil {
+			return nil, false, ctx.Err()
+		}
+		return nil, true, err
 	}
 	defer resp.Body.Close()
 
@@ -200,20 +242,21 @@ func queryLatest(ctx context.Context, client *http.Client, token, eco string) ([
 	switch resp.StatusCode {
 	case 200:
 	case 401:
-		return nil, fmt.Errorf("auth failed (401) — check SUPPLYCHAIN_OSM_TOKEN")
+		return nil, false, fmt.Errorf("auth failed (401) — check SUPPLYCHAIN_OSM_TOKEN")
 	case 403:
-		return nil, fmt.Errorf("forbidden (403) — endpoint may require Pro tier")
+		return nil, false, fmt.Errorf("forbidden (403) — endpoint may require Pro tier")
 	case 429:
-		return nil, fmt.Errorf("rate limited (429); retry later")
+		return nil, false, fmt.Errorf("rate limited (429); retry later")
 	default:
-		return nil, fmt.Errorf("unexpected status %d: %s", resp.StatusCode, snippet(body))
+		return nil, resp.StatusCode >= 500 && resp.StatusCode < 600,
+			fmt.Errorf("unexpected status %d: %s", resp.StatusCode, snippet(body))
 	}
 
 	var doc QueryLatestResponse
 	if err := json.Unmarshal(body, &doc); err != nil {
-		return nil, fmt.Errorf("decode response: %w", err)
+		return nil, false, fmt.Errorf("decode response: %w", err)
 	}
-	return doc.Threats, nil
+	return doc.Threats, false, nil
 }
 
 // parseVersionInfo extracts concrete semver pins from OSM's version_info field.
