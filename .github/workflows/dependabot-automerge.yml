@@ -1,0 +1,83 @@
+name: dependabot-automerge
+
+on:
+  # Run only trusted default-branch code. The off-peak minute avoids competing
+  # with the IOC refresh and gives eligible Dependabot updates an hourly merge
+  # window without ever granting a PR-triggered workflow write authority.
+  schedule:
+    - cron: '37 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: dependabot-automerge
+  cancel-in-progress: false
+
+jobs:
+  merge-direct-go-patches:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          persist-credentials: false
+
+      - name: Merge eligible Dependabot Go patch updates
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          default_branch="$GITHUB_REF_NAME"
+          open_pull_requests="$(gh api "repos/$GITHUB_REPOSITORY/pulls?state=open&per_page=100" --paginate)"
+          candidates="$(printf '%s' "$open_pull_requests" | jq -r \
+            --arg repo "$GITHUB_REPOSITORY" --arg branch "$default_branch" '
+              .[] |
+              select(
+                .user.login == "dependabot[bot]" and
+                .base.ref == $branch and
+                .head.repo.full_name == $repo
+              ) |
+              [.number, .head.sha] | @tsv')"
+          if [ -z "$candidates" ]; then
+            echo 'No open Dependabot PRs against the default branch.'
+            exit 0
+          fi
+
+          while IFS=$'\t' read -r pr head_sha; do
+            [ -n "$pr" ] || continue
+            checks="$(gh pr view "$pr" --repo "$GITHUB_REPOSITORY" --json statusCheckRollup)"
+            test_state="$(printf '%s' "$checks" | jq -r '
+              [.statusCheckRollup[] | select(.name == "test") | .conclusion] |
+              if length == 1 then .[0] else "MISSING" end')"
+            codeql_state="$(printf '%s' "$checks" | jq -r '
+              [.statusCheckRollup[] | select(.name == "CodeQL") | .conclusion] |
+              if length == 1 then .[0] else "MISSING" end')"
+            if [ "$test_state" != SUCCESS ] || \
+               { [ "$codeql_state" != SUCCESS ] && [ "$codeql_state" != NEUTRAL ] && [ "$codeql_state" != SKIPPED ]; }; then
+              echo "PR #$pr is not ready: test=$test_state CodeQL=$codeql_state"
+              continue
+            fi
+
+            classification="$(python3 scripts/classify_dependabot_update.py \
+              --body <(gh pr view "$pr" --repo "$GITHUB_REPOSITORY" --json body --jq .body) \
+              --go-mod <(gh api "repos/$GITHUB_REPOSITORY/contents/go.mod?ref=$head_sha" --jq .content | base64 --decode) \
+              --changed-files <(gh api "repos/$GITHUB_REPOSITORY/pulls/$pr/files" --paginate --jq '.[].filename'))"
+            eligible="$(printf '%s\n' "$classification" | awk -F= '$1 == "eligible" { print $2 }')"
+            reason="$(printf '%s\n' "$classification" | awk -F= '$1 == "reason" { sub(/^[^=]*=/, ""); print }')"
+            if [ "$eligible" != true ]; then
+              echo "PR #$pr is not eligible: $reason"
+              continue
+            fi
+
+            merge_state="$(gh pr view "$pr" --repo "$GITHUB_REPOSITORY" --json mergeStateStatus --jq .mergeStateStatus)"
+            if [ "$merge_state" != CLEAN ]; then
+              echo "PR #$pr is not mergeable now: $merge_state"
+              continue
+            fi
+            echo "Merging PR #$pr: $reason"
+            gh pr merge "$pr" --repo "$GITHUB_REPOSITORY" \
+              --squash --match-head-commit "$head_sha"
+          done <<< "$candidates"
