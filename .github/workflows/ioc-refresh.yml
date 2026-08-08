@@ -3,8 +3,8 @@ name: ioc-refresh
 # Periodically scrape public threat-intel sources for newly-disclosed npm
 # package@version IOCs and open a PR adding them to iocs/packages.txt.
 #
-# This is intentionally human-in-the-loop: the workflow only opens PRs, it
-# never auto-merges. Review the diff + source link before merging.
+# Small, IOC-only updates can auto-merge after the normal test check succeeds.
+# Large or unexpected changes remain PRs for human review.
 
 on:
   schedule:
@@ -16,8 +16,15 @@ permissions:
   contents: write
   pull-requests: write
 
+concurrency:
+  group: ioc-refresh
+  cancel-in-progress: false
+
 jobs:
   refresh:
+    # Scheduled workflows run from the default branch. Do not let a manually
+    # dispatched copy from another ref create a PR or enable auto-merge.
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
@@ -52,6 +59,36 @@ jobs:
             echo "changed=true" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Decide whether auto-merge is safe
+        id: auto_merge
+        if: steps.diff.outputs.changed == 'true'
+        env:
+          MAX_ADDED_LINES: '250'
+          MAX_REMOVED_LINES: '100'
+        run: |
+          set -euo pipefail
+
+          unexpected_files="$(git diff --name-only | grep -Ev '^(iocs/(packages|blocked-package-names|persistence-paths|payload-filenames)\.txt|iocs/manifest\.json)$' || true)"
+          if [ -n "$unexpected_files" ]; then
+            echo "Unexpected changed files prevent auto-merge:"
+            echo "$unexpected_files"
+            echo "eligible=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          git diff --check
+          added="$(git diff --numstat | awk '{ added += $1 } END { print added + 0 }')"
+          removed="$(git diff --numstat | awk '{ removed += $2 } END { print removed + 0 }')"
+          changed_files="$(git diff --name-only | wc -l | tr -d ' ')"
+
+          echo "IOC refresh diff: ${added} additions, ${removed} removals, ${changed_files} files"
+          if [ "$added" -gt "$MAX_ADDED_LINES" ] || [ "$removed" -gt "$MAX_REMOVED_LINES" ] || [ "$changed_files" -gt 5 ]; then
+            echo "Diff exceeds the unattended merge limit; leaving the PR for review."
+            echo "eligible=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "eligible=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Open PR
         id: cpr
         if: steps.diff.outputs.changed == 'true'
@@ -63,7 +100,10 @@ jobs:
           body-path: /tmp/ioc-scrape/report.md
           labels: ioc-refresh
           add-paths: |
-            iocs/*.txt
+            iocs/packages.txt
+            iocs/blocked-package-names.txt
+            iocs/persistence-paths.txt
+            iocs/payload-filenames.txt
             iocs/manifest.json
           delete-branch: true
 
@@ -75,3 +115,28 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           REF: ${{ steps.cpr.outputs.pull-request-branch }}
         run: gh workflow run ci.yml --ref "$REF"
+
+      - name: Enable guarded auto-merge for refreshed IOCs
+        if: >-
+          steps.auto_merge.outputs.eligible == 'true' &&
+          (steps.cpr.outputs.pull-request-operation == 'created' ||
+          steps.cpr.outputs.pull-request-operation == 'updated')
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ steps.cpr.outputs.pull-request-number }}
+          EXPECTED_BRANCH: ioc-refresh/auto
+          EXPECTED_BASE: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          readarray -t pr_ref < <(gh pr view "$PR" --repo "$GITHUB_REPOSITORY" \
+            --json headRefName,baseRefName,isCrossRepository \
+            --jq '.headRefName, .baseRefName, .isCrossRepository')
+          if [ "${pr_ref[0]}" != "$EXPECTED_BRANCH" ] || \
+             [ "${pr_ref[1]}" != "$EXPECTED_BASE" ] || \
+             [ "${pr_ref[2]}" != 'false' ]; then
+            echo 'Refusing to auto-merge an unexpected pull request.' >&2
+            exit 1
+          fi
+
+          gh pr merge "$PR" --repo "$GITHUB_REPOSITORY" \
+            --squash --auto --delete-branch
