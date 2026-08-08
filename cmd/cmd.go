@@ -38,6 +38,7 @@ type Globals struct {
 	JSON           bool
 	Quiet          bool
 	NoUpdate       bool
+	OSVOffline     bool
 	FailOnAdvisory bool
 	Scripts        bool // --scripts: include install-script section in human output
 	ScriptsOnly    bool // --scripts-only: ONLY show install-script section
@@ -146,6 +147,8 @@ func parseGlobalFlags(g *Globals, args []string) []string {
 			g.Quiet = true
 		case a == "--no-update":
 			g.NoUpdate = true
+		case a == "--osv-offline":
+			g.OSVOffline = true
 		case a == "--fail-on-advisory":
 			g.FailOnAdvisory = true
 		case a == "--scripts":
@@ -242,6 +245,8 @@ flags (may appear anywhere):
   --json                machine-readable output
   --quiet, -q           silent if clean (useful in hooks)
   --no-update           skip auto-update for this run
+  --osv-offline         scan only with the locally cached OSV database; never
+                        query the OSV API or resolve dependencies over network
   --fail-on-advisory    return nonzero for OSV advisories and lockfile drift
                         too. By default, only IOC/tamper/maintainer/squatting
                         supply-chain indicators fail the command.

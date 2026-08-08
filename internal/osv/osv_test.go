@@ -110,9 +110,30 @@ func TestScanReportsTimeoutAsOperationalFailure(t *testing.T) {
 	scanTimeout = 20 * time.Millisecond
 	t.Cleanup(func() { scanTimeout = previousTimeout })
 
-	if _, err := Scan(binDir, t.TempDir()); err == nil ||
+	if _, err := Scan(binDir, t.TempDir(), false); err == nil ||
 		!strings.Contains(err.Error(), "timed out") {
 		t.Fatalf("expected explicit timeout failure, got %v", err)
+	}
+}
+
+func TestScanArgsEnableAllOfflineGuards(t *testing.T) {
+	args := strings.Join(scanArgs("/workspace", true), " ")
+	for _, required := range []string{"--offline", "--offline-vulnerabilities", "--no-resolve"} {
+		if !strings.Contains(args, required) {
+			t.Fatalf("offline arguments missing %s: %s", required, args)
+		}
+	}
+	if !strings.HasSuffix(args, " /workspace") {
+		t.Fatalf("scan target must remain the final argument: %s", args)
+	}
+}
+
+func TestScanArgsRemainOnlineByDefault(t *testing.T) {
+	args := strings.Join(scanArgs("/workspace", false), " ")
+	for _, offlineOnly := range []string{"--offline", "--offline-vulnerabilities", "--no-resolve"} {
+		if strings.Contains(args, offlineOnly) {
+			t.Fatalf("default arguments unexpectedly contain %s: %s", offlineOnly, args)
+		}
 	}
 }
 
