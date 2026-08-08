@@ -44,6 +44,9 @@ those helper programs with the system package manager and then run
 # The local equivalent of the required source gate
 supplychain ci --policy=strict .
 
+# Hermetic source gate (requires a preloaded OSV Scanner offline database)
+supplychain ci --policy=strict --osv-offline .
+
 # Opt in to one reviewed, tracked repository policy
 supplychain ci --policy=strict --gitleaks-config=.gitleaks.toml .
 
@@ -80,6 +83,13 @@ supplychain init gitea --ref=FULL_COMMIT_SHA
 Commands return nonzero when their enforced policy fails, so they can be used
 directly in scripts and CI. `--quiet` suppresses clean output, and `--json`
 provides structured scan results.
+
+`--osv-offline` passes OSV Scanner's offline vulnerability and dependency
+resolution guards. Preload the required ecosystem archives with OSV Scanner's
+database download command before sealing the runner image. The scanner reads
+those archives from its standard cache (for example,
+`$XDG_CACHE_HOME/osv-scanner/PyPI/all.zip`) and returns an operational failure
+when the offline scan cannot run; it never retries with legacy online syntax.
 
 ## Strict and auto policies
 
