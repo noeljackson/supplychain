@@ -3,8 +3,11 @@ name: ioc-refresh
 # Periodically scrape public threat-intel sources for newly-disclosed npm
 # package@version IOCs and open a PR adding them to iocs/packages.txt.
 #
-# Small, IOC-only updates can auto-merge after the normal test check succeeds.
-# Large or unexpected changes remain PRs for human review.
+# Small, IOC-only updates can auto-merge after the normal pull-request test
+# check succeeds. Large or unexpected changes remain PRs for human review.
+# GitHub approval-gates that check when GITHUB_TOKEN creates or updates the PR;
+# use a GitHub App or PAT as the create-pull-request token if fully unattended
+# checks are required.
 
 on:
   schedule:
@@ -12,7 +15,6 @@ on:
   workflow_dispatch:
 
 permissions:
-  actions: write
   contents: write
   pull-requests: write
 
@@ -106,15 +108,6 @@ jobs:
             iocs/payload-filenames.txt
             iocs/manifest.json
           delete-branch: true
-
-      - name: Run CI for refresh PR head
-        if: >-
-          steps.cpr.outputs.pull-request-operation == 'created' ||
-          steps.cpr.outputs.pull-request-operation == 'updated'
-        env:
-          GH_TOKEN: ${{ github.token }}
-          REF: ${{ steps.cpr.outputs.pull-request-branch }}
-        run: gh workflow run ci.yml --ref "$REF"
 
       - name: Enable guarded auto-merge for refreshed IOCs
         if: >-
