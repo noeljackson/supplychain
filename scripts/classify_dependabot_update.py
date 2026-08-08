@@ -9,8 +9,8 @@ from pathlib import Path
 
 
 UPDATE = re.compile(
-    r"^Updates `(?P<module>[^`]+)` from v?(?P<old>\d+\.\d+\.\d+) "
-    r"to v?(?P<new>\d+\.\d+\.\d+)$",
+    r"^Bumps \[(?P<module>[^\]]+)\]\([^)]*\) from v?(?P<old>\d+\.\d+\.\d+) "
+    r"to v?(?P<new>\d+\.\d+\.\d+)\.$",
     re.MULTILINE,
 )
 EXPECTED_FILES = {"go.mod", "go.sum"}
