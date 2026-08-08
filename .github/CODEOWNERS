@@ -1,0 +1,12 @@
+# Sensitive automation and release controls. Do not cover iocs/**: the
+# scheduled refresh workflow is deliberately allowed to auto-merge bounded,
+# IOC-only changes after CI succeeds.
+/.github/CODEOWNERS @noeljackson
+/.github/workflows/** @noeljackson
+/.github/actions/** @noeljackson
+/.supplychain/** @noeljackson
+/.gitleaks.toml @noeljackson
+/.goreleaser.y*ml @noeljackson
+/action.yml @noeljackson
+/scripts/install-ci-tools @noeljackson
+/scripts/setup-go @noeljackson
