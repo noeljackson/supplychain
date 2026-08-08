@@ -162,3 +162,7 @@ For all commands and local helper requirements, see the
 Normal workstation scans may refresh public IOC data. CI always uses the IOC
 snapshot embedded in the pinned scanner source. The global action downloads
 only its pinned, hash-checked OSV/zizmor/Syft/Grype helper versions.
+Network-contained runners can additionally use `--osv-offline` with a
+preloaded OSV Scanner offline database. That mode disables OSV API queries and
+dependency resolution and fails closed instead of falling back to online scan
+syntax.

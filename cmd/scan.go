@@ -50,6 +50,7 @@ func cmdScan(g *Globals, args []string) int {
 		TyposquatDistance:  g.TyposquatDistance,
 		OSMCachePath:       filepath.Join(g.DataDir, "osm-cache.json"),
 		RequireOSV:         g.FailOnAdvisory,
+		OSVOffline:         g.OSVOffline,
 		RequireComplete:    g.FailOnAdvisory,
 		SourcePolicy:       g.SourcePolicy,
 	})
