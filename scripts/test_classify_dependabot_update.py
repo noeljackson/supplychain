@@ -12,10 +12,14 @@ require (
 """
 
 
+def dependabot_body(module: str, old: str, new: str) -> str:
+    return f"Bumps [{module}](https://example.invalid/{module}) from {old} to {new}.\n"
+
+
 class ClassifyDependabotUpdateTest(unittest.TestCase):
     def test_accepts_one_direct_patch_update(self):
         eligible, _ = classify(
-            "Updates `github.com/acme/direct` from 1.2.3 to 1.2.4\n",
+            dependabot_body("github.com/acme/direct", "1.2.3", "1.2.4"),
             DIRECT_GO_MOD,
             ["go.mod", "go.sum"],
         )
@@ -23,7 +27,7 @@ class ClassifyDependabotUpdateTest(unittest.TestCase):
 
     def test_rejects_minor_update(self):
         eligible, reason = classify(
-            "Updates `github.com/acme/direct` from 1.2.3 to 1.3.0\n",
+            dependabot_body("github.com/acme/direct", "1.2.3", "1.3.0"),
             DIRECT_GO_MOD,
             ["go.mod", "go.sum"],
         )
@@ -32,7 +36,7 @@ class ClassifyDependabotUpdateTest(unittest.TestCase):
 
     def test_rejects_unrelated_files(self):
         eligible, reason = classify(
-            "Updates `github.com/acme/direct` from 1.2.3 to 1.2.4\n",
+            dependabot_body("github.com/acme/direct", "1.2.3", "1.2.4"),
             DIRECT_GO_MOD,
             [".github/workflows/ci.yml", "go.mod", "go.sum"],
         )
@@ -41,7 +45,7 @@ class ClassifyDependabotUpdateTest(unittest.TestCase):
 
     def test_rejects_indirect_dependency(self):
         eligible, reason = classify(
-            "Updates `github.com/acme/indirect` from 1.2.3 to 1.2.4\n",
+            dependabot_body("github.com/acme/indirect", "1.2.3", "1.2.4"),
             DIRECT_GO_MOD,
             ["go.mod", "go.sum"],
         )
