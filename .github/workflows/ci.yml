@@ -4,11 +4,6 @@ on:
   push:
     branches: [main]
   pull_request:
-    # IOC-only refreshes are tested by the trusted scheduled workflow using
-    # workflow_dispatch. Skipping this duplicate PR trigger avoids GitHub's
-    # first-time-contributor approval gate blocking unattended refreshes.
-    paths-ignore:
-      - 'iocs/**'
   workflow_dispatch: {}
 
 jobs:
