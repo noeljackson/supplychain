@@ -82,7 +82,7 @@ var scanTimeout = 120 * time.Second
 // Scan runs osv-scanner against target and returns parsed findings.
 // Returns (nil, nil) if osv-scanner is unavailable — that's an expected
 // state, not an error.
-func Scan(binDir, target string) ([]PackageVuln, error) {
+func Scan(binDir, target string, offline bool) ([]PackageVuln, error) {
 	path, _, err := Locate(binDir)
 	if err != nil {
 		return nil, nil
@@ -93,7 +93,7 @@ func Scan(binDir, target string) ([]PackageVuln, error) {
 
 	// osv-scanner v2 changed the CLI to `osv-scanner scan source`; older
 	// versions accepted a bare path. Try the new form first, fall back.
-	args := []string{"scan", "source", "--recursive", "--format", "json", target}
+	args := scanArgs(target, offline)
 	cmd := exec.CommandContext(ctx, path, args...)
 	out, err := cmd.Output()
 	if err != nil {
@@ -106,6 +106,12 @@ func Scan(binDir, target string) ([]PackageVuln, error) {
 		// Exit code 1 means findings — that's expected; only re-run on usage error.
 		var exitErr *exec.ExitError
 		if !errors.As(err, &exitErr) || exitErr.ExitCode() != 1 {
+			// The legacy syntax has no reviewed equivalent for the v2 offline
+			// controls. Failing closed prevents an option error from silently
+			// turning a hermetic scan into an online one.
+			if offline {
+				return nil, fmt.Errorf("osv-scanner offline scan failed: %w", err)
+			}
 			cmd = exec.CommandContext(ctx, path, "--recursive", "--format", "json", target)
 			out, err = cmd.Output()
 			if err != nil {
@@ -122,6 +128,14 @@ func Scan(binDir, target string) ([]PackageVuln, error) {
 		}
 	}
 	return parse(out)
+}
+
+func scanArgs(target string, offline bool) []string {
+	args := []string{"scan", "source", "--recursive", "--format", "json"}
+	if offline {
+		args = append(args, "--offline", "--offline-vulnerabilities", "--no-resolve")
+	}
+	return append(args, target)
 }
 
 func isNoPackageSources(err error) bool {

@@ -70,6 +70,10 @@ type Options struct {
 	// this so advisory coverage can never disappear silently.
 	RequireOSV bool
 
+	// OSVOffline forbids OSV API queries and dependency resolution. It requires
+	// a previously downloaded osv-scanner offline vulnerability database.
+	OSVOffline bool
+
 	// RequireComplete makes incomplete or failed required checks a policy
 	// failure. CI strict policy and --fail-on-advisory enable it.
 	RequireComplete bool
@@ -353,7 +357,7 @@ func Run(opts Options) (f Findings, err error) {
 	}
 	f.Helpers["osv-scanner"] = osvVersion
 	checkStarted = time.Now()
-	osvHits, osvErr := osv.Scan(opts.BinDir, opts.Target)
+	osvHits, osvErr := osv.Scan(opts.BinDir, opts.Target, opts.OSVOffline)
 	if err := applyOSVResult(&f, osvHits, osvErr); err != nil {
 		f.Coverage.Set("osv", check.StatusFailed, opts.RequireOSV, err.Error())
 		f.Coverage.SetDuration("osv", elapsedMS(checkStarted))
