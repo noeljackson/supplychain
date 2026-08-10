@@ -50,8 +50,10 @@ jobs:
       - name: Check out the exact called-workflow source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
         with:
-          repository: noeljackson/supplychain
-          ref: ${{ github.workflow_sha }}
+          # The github context belongs to the caller of a reusable workflow.
+          # Job-level metadata identifies this workflow's immutable source.
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
           path: .supplychain-action
           persist-credentials: false
       - name: Run supplychain
