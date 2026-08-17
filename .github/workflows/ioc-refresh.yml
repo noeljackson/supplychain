@@ -106,6 +106,10 @@ jobs:
           private-key: ${{ secrets.IOC_BOT_PRIVATE_KEY }}
           owner: ${{ github.repository_owner }}
           repositories: supplychain
+          # Downscope below the installation grant so the minted token carries
+          # only what create-pull-request needs, never the App's full set.
+          permission-contents: write
+          permission-pull-requests: write
 
       - name: Open PR
         id: cpr
