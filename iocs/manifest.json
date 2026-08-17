@@ -1,11 +1,11 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-07-25T00:00:00Z",
-  "source_revision": "dd34170a75a80d9b3484e39df0ac2a5ebf6682dc",
+  "generated_at": "2026-08-17T06:31:28Z",
+  "source_revision": "45ee609548f29cb8cdae432e4f5fd07ea9a4b8a6",
   "files": {
     "blocked-package-names.txt": {
-      "sha256": "c0ab3ce9b60044f878b08ad478cf2ee9341439be8578ab258aef39a8d5bca6e2",
-      "size": 3977
+      "sha256": "a652df4d0665de3360cce9c2e567ff47f23c7ff3035992198f83a9d187c00812",
+      "size": 27665
     },
     "c2-domains.txt": {
       "sha256": "914647f23eaed6996f517a732648b5e41cf2d16fd0f85303fc853a3dc528cc32",
@@ -16,8 +16,8 @@
       "size": 565
     },
     "packages.txt": {
-      "sha256": "1054ce9260c3ae6a8ccd14f1f4af512c6f29107f8e0fc75c5b47e0be61f7c805",
-      "size": 4194
+      "sha256": "c384028f1d7c2e2e2adb40c1233dda85897ee4c7f9e26718967efdb29e7b4243",
+      "size": 244255
     },
     "payload-filenames.txt": {
       "sha256": "4c82f6270967f258d942f90255c8d50fc0a1b8866513287ce08ed27f22dedd87",
