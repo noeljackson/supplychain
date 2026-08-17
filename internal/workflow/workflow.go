@@ -1,4 +1,4 @@
-// Package workflow runs a pinned GitHub Actions security audit through zizmor.
+// Package workflow runs a pinned Actions workflow security audit through zizmor.
 package workflow
 
 import (
@@ -89,6 +89,7 @@ func definitionPaths(root string) ([]string, error) {
 		if (strings.HasPrefix(rel, ".github/workflows/") ||
 			strings.HasPrefix(rel, ".gitea/workflows/") ||
 			strings.HasPrefix(rel, ".gitea/scoped_workflows/") ||
+			strings.HasPrefix(rel, ".forgejo/workflows/") ||
 			rel == ".github/dependabot.yml" || rel == ".github/dependabot.yaml") &&
 			(strings.HasSuffix(name, ".yml") || strings.HasSuffix(name, ".yaml")) {
 			definitions = append(definitions, path)
