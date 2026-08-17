@@ -2,13 +2,12 @@
 # scheduled refresh workflow is deliberately allowed to auto-merge bounded,
 # IOC-only changes after CI succeeds.
 #
-# ADVISORY ONLY. The Protect main ruleset sets require_code_owner_review to
-# false and requires zero approving reviews, so nothing below is enforced —
-# these paths are a review checklist, not a gate. Enforcement needs a second
-# trusted account, because a sole maintainer cannot approve their own pull
-# request and would be locked out of their own repository. If one is ever
-# added, set require_code_owner_review and required_approving_review_count on
-# the ruleset and delete this paragraph.
+# Advisory: a review checklist, not a gate. GitHub cannot require review for
+# specific paths alone — require_code_owner_review has no effect unless
+# required_approving_review_count is at least 1, and that count applies to every
+# pull request to the default branch, which would block the IOC refresh and
+# Dependabot auto-merges. Enforcing needs a second reviewing account plus bypass
+# actors for the merging bots.
 /.github/CODEOWNERS @noeljackson
 /.github/workflows/** @noeljackson
 /.github/actions/** @noeljackson
