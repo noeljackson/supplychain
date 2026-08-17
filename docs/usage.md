@@ -59,7 +59,7 @@ supplychain --json scan .
 # Redacted secret scan of tracked and non-ignored untracked files
 supplychain secrets .
 
-# Offline GitHub and Gitea Actions audit
+# Offline GitHub, Gitea, and Forgejo Actions audit
 supplychain workflows .
 
 # Generate an SPDX SBOM and fail on high/critical image findings

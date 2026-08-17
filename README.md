@@ -82,7 +82,7 @@ The root composite action is also available inside an existing job:
     fail-on-severity: high
 ```
 
-Strict scans also run zizmor offline against GitHub and Gitea Actions definitions,
+Strict scans also run zizmor offline against GitHub, Gitea, and Forgejo Actions definitions,
 failing on medium-or-higher, medium-confidence findings and workflow schema
 errors without exposing a GitHub token to the analyzer. They also run Gitleaks
 with redaction and analytics disabled so checked-out repository secrets fail
