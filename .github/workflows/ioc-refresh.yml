@@ -11,7 +11,7 @@ name: ioc-refresh
 # GITHUB_TOKEN, so a token-authored PR parks its ci run at action_required and
 # never produces the required test check. An installation token is minted per
 # run, expires within the hour, and is scoped to this repository's contents and
-# pull-requests only.
+# pull-requests only. The App credentials live in the bot environment.
 
 on:
   schedule:
@@ -32,6 +32,10 @@ jobs:
     # dispatched copy from another ref create a PR or enable auto-merge.
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    # Holds the supplychain-ioc-bot App credentials. Keeping them here rather
+    # than at repository scope means only jobs that declare this environment can
+    # read them.
+    environment: bot
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
         with:
