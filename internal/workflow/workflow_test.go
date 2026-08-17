@@ -43,11 +43,12 @@ func TestContainsWorkflowDefinitions(t *testing.T) {
 	}
 }
 
-func TestContainsGiteaWorkflowDefinitions(t *testing.T) {
+func TestContainsGiteaAndForgejoWorkflowDefinitions(t *testing.T) {
 	target := t.TempDir()
 	for _, directory := range []string{
 		filepath.Join(target, ".gitea", "workflows"),
 		filepath.Join(target, ".gitea", "scoped_workflows"),
+		filepath.Join(target, ".forgejo", "workflows"),
 	} {
 		if err := os.MkdirAll(directory, 0o700); err != nil {
 			t.Fatal(err)
@@ -60,7 +61,7 @@ func TestContainsGiteaWorkflowDefinitions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(definitions) != 2 {
-		t.Fatalf("expected two Gitea workflow definitions, got %v", definitions)
+	if len(definitions) != 3 {
+		t.Fatalf("expected Gitea and Forgejo workflow definitions, got %v", definitions)
 	}
 }
