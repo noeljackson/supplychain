@@ -57,7 +57,7 @@ jobs:
           # the caller's repository, which the next step then executed.
           # scripts/check_release_security.py enforces the literal pin.
           repository: noeljackson/supplychain
-          ref: 45ee609548f29cb8cdae432e4f5fd07ea9a4b8a6
+          ref: 064767c44c8ee00dae7b2422a41274b7d02d6275
           path: .supplychain-action
           persist-credentials: false
       - name: Run supplychain
