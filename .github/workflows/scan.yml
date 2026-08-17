@@ -47,13 +47,17 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
         with:
           persist-credentials: false
-      - name: Check out the exact called-workflow source
+      - name: Check out the pinned action source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
         with:
-          # The github context belongs to the caller of a reusable workflow.
-          # Job-level metadata identifies this workflow's immutable source.
-          repository: ${{ job.workflow_repository }}
-          ref: ${{ job.workflow_sha }}
+          # Both values must stay literal. Inside a reusable workflow the github
+          # context describes the caller, and no context exposes this workflow's
+          # own source — job.workflow_repository and job.workflow_sha do not
+          # exist, so they resolved to the empty string and silently checked out
+          # the caller's repository, which the next step then executed.
+          # scripts/check_release_security.py enforces the literal pin.
+          repository: noeljackson/supplychain
+          ref: 45ee609548f29cb8cdae432e4f5fd07ea9a4b8a6
           path: .supplychain-action
           persist-credentials: false
       - name: Run supplychain
