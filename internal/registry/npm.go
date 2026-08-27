@@ -10,11 +10,19 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
 	"time"
+)
+
+const (
+	registryAttemptTimeout = 60 * time.Second
+	maxPackumentBytes      = 64 * 1024 * 1024
+	maxSigningKeysBytes    = 1024 * 1024
+	registryAttempts       = 3
 )
 
 // ErrNotFound is returned when the registry returns 404 for a name.
@@ -83,12 +91,14 @@ type Client struct {
 	HTTP     *http.Client
 }
 
-// NewClient returns a client with a 24h cache TTL and 8s request timeout.
+// NewClient returns a client with a 24h cache TTL and a bounded per-attempt
+// timeout. npm packuments can be tens of megabytes, so the timeout must cover
+// the complete response body rather than only reaching response headers.
 func NewClient(cacheDir string) *Client {
 	return &Client{
 		CacheDir: cacheDir,
 		TTL:      24 * time.Hour,
-		HTTP:     &http.Client{Timeout: 15 * time.Second},
+		HTTP:     &http.Client{Timeout: registryAttemptTimeout},
 	}
 }
 
@@ -147,67 +157,80 @@ func (c *Client) fetch(name string) (*Packument, error) {
 	encoded := url.PathEscape(name)
 	u := "https://registry.npmjs.org/" + encoded
 
-	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
-	defer cancel()
-	req, _ := http.NewRequestWithContext(ctx, "GET", u, nil)
+	req, _ := http.NewRequestWithContext(context.Background(), http.MethodGet, u, nil)
 	req.Header.Set("Accept", "application/json")
 
-	resp, err := c.doWithRetry(req)
+	status, p, err := fetchJSONWithRetry[Packument](c, req, maxPackumentBytes)
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
-	if resp.StatusCode == 404 {
+	if status == http.StatusNotFound {
 		return nil, ErrNotFound
 	}
-	if resp.StatusCode != 200 {
-		return nil, fmt.Errorf("registry %s: %s", name, resp.Status)
+	if status != http.StatusOK {
+		return nil, fmt.Errorf("registry %s: HTTP %d", name, status)
 	}
-	var p Packument
-	if err := json.NewDecoder(resp.Body).Decode(&p); err != nil {
-		return nil, err
-	}
-	return &p, nil
+	return p, nil
 }
 
 // SigningKeys fetches the npm registry's public ECDSA signing keys. Keys are
 // deliberately not persisted in the package metadata cache because rotations
 // must be observed promptly by signature verification.
 func (c *Client) SigningKeys() ([]SigningKey, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
-	defer cancel()
-	req, _ := http.NewRequestWithContext(ctx, "GET", "https://registry.npmjs.org/-/npm/v1/keys", nil)
+	req, _ := http.NewRequestWithContext(context.Background(), http.MethodGet, "https://registry.npmjs.org/-/npm/v1/keys", nil)
 	req.Header.Set("Accept", "application/json")
-	resp, err := c.doWithRetry(req)
+	type signingKeysDocument struct {
+		Keys []SigningKey `json:"keys"`
+	}
+	status, doc, err := fetchJSONWithRetry[signingKeysDocument](c, req, maxSigningKeysBytes)
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("registry signing keys: %s", resp.Status)
-	}
-	var doc struct {
-		Keys []SigningKey `json:"keys"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&doc); err != nil {
-		return nil, err
+	if status != http.StatusOK {
+		return nil, fmt.Errorf("registry signing keys: HTTP %d", status)
 	}
 	return doc.Keys, nil
 }
 
-func (c *Client) doWithRetry(req *http.Request) (*http.Response, error) {
+func fetchJSONWithRetry[T any](c *Client, req *http.Request, maxBytes int64) (int, *T, error) {
 	var last error
-	for attempt := 0; attempt < 3; attempt++ {
-		clone := req.Clone(req.Context())
+	for attempt := 0; attempt < registryAttempts; attempt++ {
+		ctx, cancel := context.WithTimeout(req.Context(), registryAttemptTimeout)
+		clone := req.Clone(ctx)
 		resp, err := c.HTTP.Do(clone)
-		if err == nil {
-			return resp, nil
+		if err != nil {
+			cancel()
+			last = err
+		} else {
+			status := resp.StatusCode
+			if status != http.StatusOK {
+				_ = resp.Body.Close()
+				cancel()
+				return status, nil, nil
+			}
+
+			body, readErr := io.ReadAll(io.LimitReader(resp.Body, maxBytes+1))
+			closeErr := resp.Body.Close()
+			cancel()
+			if readErr != nil {
+				last = readErr
+			} else if closeErr != nil {
+				last = closeErr
+			} else if int64(len(body)) > maxBytes {
+				return 0, nil, fmt.Errorf("registry response exceeds %d bytes", maxBytes)
+			} else {
+				var decoded T
+				if err := json.Unmarshal(body, &decoded); err == nil {
+					return status, &decoded, nil
+				} else {
+					last = err
+				}
+			}
 		}
-		last = err
 		if req.Context().Err() != nil {
 			break
 		}
 		time.Sleep(time.Duration(attempt+1) * 200 * time.Millisecond)
 	}
-	return nil, last
+	return 0, nil, last
 }
