@@ -11,9 +11,7 @@ use std::path::{Path, PathBuf};
 
 use semver::Version;
 
-pub mod semver_lenient;
-
-pub use semver_lenient::parse_lenient;
+pub use supplychain_semver::parse_lenient;
 
 /// Basename of the malicious `name@version` list.
 pub const PACKAGES: &str = "packages.txt";
@@ -221,6 +219,23 @@ mod tests {
     fn list_parsing_strips_comments_and_blanks() {
         let text = "# header\n\nevil.example\n  spaced.example  # why\n\n";
         assert_eq!(parse_list(text), ["evil.example", "spaced.example"]);
+    }
+
+    #[test]
+    fn every_version_in_the_shipped_ioc_data_parses() {
+        // Guards against IOC data the Go loader would parse but this one would
+        // not: a silently unparsed version degrades range matching to string
+        // equality without any signal that coverage was lost.
+        let packages = load_packages(&Embedded).unwrap();
+        let unparsed: Vec<_> = packages
+            .iter()
+            .filter(|p| p.parsed.is_none())
+            .map(|p| format!("{}@{}", p.name, p.version))
+            .collect();
+        assert!(
+            unparsed.is_empty(),
+            "shipped IOC versions failed to parse: {unparsed:?}"
+        );
     }
 
     #[test]

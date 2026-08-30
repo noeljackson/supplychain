@@ -16,3 +16,9 @@ state = "required"
 description = "indicator loading: packages, blocked names, domains, paths, signatures"
 go = ["go", "run", "./parity/goprobe", "ioc"]
 rust = ["cargo", "run", "-q", "-p", "supplychain-ioc", "--example", "dump"]
+
+[probes.semver-constraints]
+state = "required"
+description = "Masterminds constraint semantics over the shared version matrix"
+go = ["go", "run", "./parity/goprobe", "semver-constraints"]
+rust = ["cargo", "run", "-q", "-p", "supplychain-semver", "--example", "constraints"]

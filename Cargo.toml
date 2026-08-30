@@ -3,6 +3,7 @@ resolver = "3"
 members = [
     "crates/core",
     "crates/ioc",
+    "crates/semver",
     "crates/xtask",
 ]
 
@@ -16,6 +17,7 @@ repository = "https://github.com/noeljackson/supplychain"
 [workspace.dependencies]
 supplychain-core = { path = "crates/core" }
 supplychain-ioc = { path = "crates/ioc" }
+supplychain-semver = { path = "crates/semver" }
 
 semver = "1"
 serde = { version = "1", features = ["derive"] }

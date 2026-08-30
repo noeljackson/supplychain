@@ -125,6 +125,14 @@ name = "supplychain-ioc"
 version = "0.1.0"
 dependencies = [
  "semver",
+ "supplychain-semver",
+]
+
+[[package]]
+name = "supplychain-semver"
+version = "0.1.0"
+dependencies = [
+ "semver",
 ]
 
 [[package]]

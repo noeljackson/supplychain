@@ -125,34 +125,4 @@ mod tests {
             );
         }
     }
-
-    #[test]
-    fn every_version_in_the_shipped_ioc_data_parses() {
-        // Guards against IOC data that the Go loader would parse but this one
-        // would not: a silently unparsed version degrades range matching.
-        let data = include_str!("../../../iocs/packages.txt");
-        let mut checked = 0usize;
-        for line in data.lines() {
-            let line = match line.split_once('#') {
-                Some((head, _)) => head.trim(),
-                None => line.trim(),
-            };
-            if line.is_empty() {
-                continue;
-            }
-            let Some(at) = line.rfind('@').filter(|&at| at > 0) else {
-                continue;
-            };
-            let version = &line[at + 1..];
-            assert!(
-                parse_lenient(version).is_some(),
-                "shipped IOC version {version:?} failed to parse"
-            );
-            checked += 1;
-        }
-        assert!(
-            checked > 100,
-            "expected a populated IOC corpus, saw {checked}"
-        );
-    }
 }

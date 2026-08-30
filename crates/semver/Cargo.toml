@@ -1,5 +1,5 @@
 [package]
-name = "supplychain-ioc"
+name = "supplychain-semver"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -8,4 +8,3 @@ repository.workspace = true
 
 [dependencies]
 semver = { workspace = true }
-supplychain-semver = { workspace = true }

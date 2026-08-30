@@ -23,6 +23,8 @@ func main() {
 	switch probe := os.Args[1]; probe {
 	case "ioc":
 		err = probeIOC()
+	case "semver-constraints":
+		err = probeConstraints()
 	default:
 		fmt.Fprintf(os.Stderr, "goprobe: unknown probe %q\n", probe)
 		os.Exit(2)
