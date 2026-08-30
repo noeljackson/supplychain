@@ -3,6 +3,7 @@ resolver = "3"
 members = [
     "crates/core",
     "crates/ioc",
+    "crates/xtask",
 ]
 
 [workspace.package]
@@ -19,6 +20,7 @@ supplychain-ioc = { path = "crates/ioc" }
 semver = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+toml = "0.9"
 
 [profile.release]
 lto = "thin"

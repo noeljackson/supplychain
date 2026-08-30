@@ -1,0 +1,18 @@
+# Parity gates for the Go -> Rust port.
+#
+# Each probe pairs a Go command with the Rust command that must reproduce its
+# output exactly. `state` decides whether divergence fails CI:
+#
+#   required  the Rust implementation is authoritative; divergence is a bug, and
+#             the Go counterpart may be deleted.
+#   pending   not ported yet. Divergence is reported but tolerated, so the port
+#             can land incrementally without a permanently red build.
+#
+# Promoting a probe to `required` is the gate that authorises deleting the Go
+# implementation it covers.
+
+[probes.ioc]
+state = "required"
+description = "indicator loading: packages, blocked names, domains, paths, signatures"
+go = ["go", "run", "./parity/goprobe", "ioc"]
+rust = ["cargo", "run", "-q", "-p", "supplychain-ioc", "--example", "dump"]

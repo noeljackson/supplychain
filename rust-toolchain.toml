@@ -1,0 +1,6 @@
+# Pinned so CI, release builds, and local development agree on one compiler.
+# Kept as a file rather than a setup action: rustup reads it automatically,
+# which keeps the workflow free of another third-party action to audit.
+[toolchain]
+channel = "1.94.1"
+components = ["rustfmt", "clippy"]
