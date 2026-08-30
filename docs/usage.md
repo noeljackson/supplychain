@@ -234,9 +234,12 @@ assets, npm, OSV, and the configured indicator source. If a download times out
 on a machine with an application firewall, approve the exact tool/domain and
 retry; do not disable checksum or signature checks.
 
-`SUPPLYCHAIN_OSM_TOKEN` optionally enriches npm malware indicators from
-OpenSourceMalware. Do not add it to GitHub Actions just for the standard strict
-gate: pinned CI is intentionally deterministic and does not require that token.
-Security-owned workflows that intentionally want live enrichment can add
-`--refresh-osm`; that explicit mode fails closed if the token is absent or the
-refresh fails.
+OpenSourceMalware can optionally enrich npm malware indicators. Do not add its
+token to GitHub Actions just for the standard strict gate: pinned CI is
+intentionally deterministic and does not require it. Security-owned workflows
+that intentionally want live enrichment should inject a dedicated mode-`0600`
+regular file and use `--refresh-osm --osm-token-file=/path/to/token` (or the
+composite action's `osm-token-file` input). Symlinks, non-regular files, and
+broader permissions fail closed. `SUPPLYCHAIN_OSM_TOKEN` remains available for
+interactive compatibility; an explicit refresh fails closed if no token is
+available or the refresh fails.

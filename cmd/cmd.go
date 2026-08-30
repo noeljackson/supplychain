@@ -280,7 +280,8 @@ environment:
                         When set, 'supplychain update' fetches /query-latest
                         and merges npm IOCs into the matcher set. Absent →
                         OSM integration is a no-op. Free-tier TOS: non-
-                        commercial use only.
+                        commercial use only. CI should prefer --osm-token-file
+                        with an injected mode-0600 regular file.
 `)
 }
 
