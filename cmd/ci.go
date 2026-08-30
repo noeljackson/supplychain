@@ -22,7 +22,11 @@ func cmdCI(g *Globals, args []string) int {
 	gitleaksConfig := fs.String("gitleaks-config", "", "explicit reviewed Gitleaks config inside the target")
 	refreshOSM := fs.Bool(
 		"refresh-osm", false,
-		"refresh the OSM malware cache using SUPPLYCHAIN_OSM_TOKEN before scanning",
+		"refresh the OSM malware cache before scanning",
+	)
+	osmTokenFile := fs.String(
+		"osm-token-file", "",
+		"read the OSM bearer token from an owner-only regular file",
 	)
 	if err := fs.Parse(args); err != nil {
 		return 2
@@ -41,16 +45,29 @@ func cmdCI(g *Globals, args []string) int {
 		return report.ExitOperational
 	}
 
+	if *osmTokenFile != "" && !*refreshOSM {
+		fmt.Fprintln(os.Stderr, "ci: --osm-token-file requires --refresh-osm")
+		return report.ExitUsage
+	}
+
 	if *refreshOSM {
-		if osm.Token() == "" {
+		token := osm.Token()
+		if *osmTokenFile != "" {
+			token, err = osm.TokenFromFile(*osmTokenFile)
+			if err != nil {
+				fmt.Fprintln(os.Stderr, "ci: read OSM token file:", err)
+				return report.ExitOperational
+			}
+		}
+		if token == "" {
 			fmt.Fprintln(
 				os.Stderr,
-				"ci: --refresh-osm requires SUPPLYCHAIN_OSM_TOKEN",
+				"ci: --refresh-osm requires --osm-token-file or SUPPLYCHAIN_OSM_TOKEN",
 			)
 			return report.ExitOperational
 		}
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-		skipped, _, _, refreshErr := osm.Refresh(ctx, g.DataDir, []string{"npm"})
+		skipped, _, _, refreshErr := osm.RefreshWithToken(ctx, g.DataDir, []string{"npm"}, token)
 		cancel()
 		if refreshErr != nil {
 			fmt.Fprintln(os.Stderr, "ci: refresh OSM:", refreshErr)

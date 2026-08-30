@@ -16,3 +16,13 @@ func TestCIRefreshOSMRequiresToken(t *testing.T) {
 		t.Fatalf("exit = %d, want %d", exit, report.ExitOperational)
 	}
 }
+
+func TestCIOSMTokenFileRequiresRefresh(t *testing.T) {
+	globals := &Globals{
+		DataDir: t.TempDir(),
+		BinDir:  t.TempDir(),
+	}
+	if exit := cmdCI(globals, []string{"--osm-token-file=token", t.TempDir()}); exit != report.ExitUsage {
+		t.Fatalf("exit = %d, want %d", exit, report.ExitUsage)
+	}
+}
