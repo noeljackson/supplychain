@@ -1,0 +1,26 @@
+[workspace]
+resolver = "3"
+members = [
+    "crates/core",
+    "crates/ioc",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.90"
+license = "MIT"
+repository = "https://github.com/noeljackson/supplychain"
+
+[workspace.dependencies]
+supplychain-core = { path = "crates/core" }
+supplychain-ioc = { path = "crates/ioc" }
+
+semver = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = true

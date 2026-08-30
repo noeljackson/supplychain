@@ -27,3 +27,6 @@ go.work.sum
 *.swo
 *~
 .DS_Store
+
+# Rust build artifacts
+/target/
