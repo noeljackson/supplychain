@@ -2,5 +2,6 @@
 //! versioned report contract.
 
 pub mod check;
+pub mod json_compat;
 
 pub use check::{CheckResult, Coverage, Status};

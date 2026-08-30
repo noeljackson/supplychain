@@ -22,3 +22,9 @@ state = "required"
 description = "Masterminds constraint semantics over the shared version matrix"
 go = ["go", "run", "./parity/goprobe", "semver-constraints"]
 rust = ["cargo", "run", "-q", "-p", "supplychain-semver", "--example", "constraints"]
+
+[probes.manifest]
+state = "required"
+description = "package.json indicator matching over the fixture corpus"
+go = ["go", "run", "./parity/goprobe", "manifest"]
+rust = ["cargo", "run", "-q", "-p", "supplychain-manifest", "--example", "scan"]

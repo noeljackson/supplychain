@@ -25,6 +25,8 @@ func main() {
 		err = probeIOC()
 	case "semver-constraints":
 		err = probeConstraints()
+	case "manifest":
+		err = probeManifest()
 	default:
 		fmt.Fprintf(os.Stderr, "goprobe: unknown probe %q\n", probe)
 		os.Exit(2)

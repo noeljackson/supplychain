@@ -1,0 +1,19 @@
+{
+  "name": "root-fixture",
+  "version": "1.0.0",
+  "dependencies": {
+    "@tanstack/router-utils": "1.161.11",
+    "@mistralai/mistralai-azure": "^1.7.0",
+    "clean-package": "^4.0.0"
+  },
+  "devDependencies": {
+    "ai-pro-sdk": "*",
+    "agents-a365-runtime": "^1.0.0"
+  },
+  "peerDependencies": {
+    "px8my": ">=1.0.0 <2.0.0"
+  },
+  "optionalDependencies": {
+    "@tanstack/router-utils": "workspace:*"
+  }
+}

@@ -1,0 +1,7 @@
+{
+  "name": "deep-fixture",
+  "dependencies": {
+    "@tanstack/router-utils": "1.161.14",
+    "px8my": "^2.0.0"
+  }
+}

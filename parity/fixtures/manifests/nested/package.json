@@ -1,0 +1,13 @@
+{
+  "name": "nested-fixture",
+  "dependencies": {
+    "ai-pro-sdk": "2.0.3",
+    "px8my": "~1.0.40",
+    "jenkins-forge-app": "github:foo/bar",
+    "unrelated": "1.0.0"
+  },
+  "devDependencies": {
+    "@mistralai/mistralai-azure": "x",
+    "fhirproxy-utils": "file:../local"
+  }
+}
