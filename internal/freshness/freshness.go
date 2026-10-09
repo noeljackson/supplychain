@@ -1,5 +1,5 @@
-// Package freshness flags installed dependencies whose version was published
-// in the last N days. Catches the common pattern of account-takeover attacks:
+// Package freshness flags dependencies whose installed or locked version was
+// published in the last N days. Catches the common pattern of account-takeover attacks:
 // attacker publishes a malicious version, victims install it before the
 // community has time to disclose.
 package freshness
@@ -16,6 +16,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/noeljackson/supplychain/internal/manifest"
 	"github.com/noeljackson/supplychain/internal/registry"
 )
 
@@ -27,9 +28,11 @@ type Hit struct {
 	AgeHuman  string    `json:"age_human"`
 }
 
-// Check walks node_modules under target and reports deps whose installed
-// version was published within `days` (default 7) of now. Returns nil when
-// days <= 0 — callers can guard the check off via a flag.
+// Check reports deps whose installed version (node_modules under target) or
+// locked version (every entry of the lockfiles under target, transitive ones
+// included) was published within `days` (default 7) of now. A lockfile-only
+// target is therefore checked in full before anything is installed. Returns
+// nil when days <= 0 — callers can guard the check off via a flag.
 func Check(target string, days int, reg *registry.Client) ([]Hit, error) {
 	if days <= 0 || reg == nil {
 		return nil, nil
@@ -38,6 +41,11 @@ func Check(target string, days int, reg *registry.Client) ([]Hit, error) {
 	if err != nil {
 		return nil, err
 	}
+	locked, err := manifest.LockedPackages(target)
+	if err != nil {
+		return nil, err
+	}
+	deps = mergeLocked(deps, locked)
 	if len(deps) == 0 {
 		return nil, nil
 	}
@@ -99,8 +107,27 @@ func ageHuman(t time.Time) string {
 	}
 }
 
-// dep is a minimal (name, version) pair from an installed package.json.
+// dep is a minimal (name, version) pair from an installed package.json or a
+// lockfile entry.
 type dep struct{ Name, Version string }
+
+// mergeLocked appends lockfile entries not already installed, so each
+// name@version is looked up once.
+func mergeLocked(deps []dep, locked []manifest.LockedPackage) []dep {
+	seen := make(map[string]struct{}, len(deps)+len(locked))
+	for _, d := range deps {
+		seen[d.Name+"@"+d.Version] = struct{}{}
+	}
+	for _, l := range locked {
+		key := l.Name + "@" + l.Version
+		if _, duplicate := seen[key]; duplicate {
+			continue
+		}
+		seen[key] = struct{}{}
+		deps = append(deps, dep{Name: l.Name, Version: l.Version})
+	}
+	return deps
+}
 
 func walkInstalled(target string) ([]dep, error) {
 	var nmDirs []string
