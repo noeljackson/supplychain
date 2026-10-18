@@ -404,3 +404,133 @@ func dedupeAndSortLockHits(hits []LockHit) []LockHit {
 	})
 	return out
 }
+
+// LockedPackage is one resolved package version pinned by a lockfile.
+type LockedPackage struct {
+	File    string
+	Name    string
+	Version string
+}
+
+// LockedPackages returns every resolved package version pinned by the
+// lockfiles under root, transitive entries included: package-lock.json and
+// npm-shrinkwrap.json, pnpm-lock.yaml, yarn.lock and bun.lock. Installed
+// node_modules trees are not descended, so a vendored lockfile inside a
+// dependency is never mistaken for the project's own.
+func LockedPackages(root string) ([]LockedPackage, error) {
+	var out []LockedPackage
+	seen := make(map[string]struct{})
+	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return fmt.Errorf("walk lockfile path %s: %w", path, walkErr)
+		}
+		if d.IsDir() {
+			if name := d.Name(); name == "node_modules" || name == ".git" {
+				return fs.SkipDir
+			}
+			return nil
+		}
+		var (
+			packages []resolvedPackage
+			err      error
+		)
+		switch d.Name() {
+		case "package-lock.json", "npm-shrinkwrap.json":
+			var body []byte
+			if body, err = os.ReadFile(path); err == nil {
+				packages, err = npmLockPackages(body)
+			}
+		case "pnpm-lock.yaml":
+			packages, err = readResolved(path, parsePnpmLock)
+		case "yarn.lock":
+			packages, err = readResolved(path, parseYarnLock)
+		case "bun.lock":
+			packages, err = bunLockPackages(path)
+		default:
+			return nil
+		}
+		if err != nil {
+			return fmt.Errorf("read lockfile %s: %w", path, err)
+		}
+		for _, pkg := range packages {
+			if pkg.Name == "" || pkg.Version == "" {
+				continue
+			}
+			key := path + "\x00" + pkg.Name + "\x00" + pkg.Version
+			if _, duplicate := seen[key]; duplicate {
+				continue
+			}
+			seen[key] = struct{}{}
+			out = append(out, LockedPackage{File: path, Name: pkg.Name, Version: pkg.Version})
+		}
+		return nil
+	})
+	return out, err
+}
+
+func readResolved(path string, parse func(io.Reader) ([]resolvedPackage, error)) ([]resolvedPackage, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	return parse(f)
+}
+
+func bunLockPackages(path string) ([]resolvedPackage, error) {
+	packages, issues, err := bunverify.ParseLockfile(path)
+	if err != nil {
+		return nil, err
+	}
+	if len(issues) > 0 {
+		return nil, fmt.Errorf("Bun lockfile contains unsupported source entry %s: %s",
+			issues[0].Package, issues[0].Message)
+	}
+	out := make([]resolvedPackage, 0, len(packages))
+	for _, pkg := range packages {
+		out = append(out, resolvedPackage{Name: pkg.Name, Version: pkg.Version})
+	}
+	return out, nil
+}
+
+// npmLockPackages lists the registry packages an npm lockfile pins. An alias
+// entry ("node_modules/x": {"name": "real", ...}) resolves to its registry
+// name; linked workspace entries carry no registry version and are skipped.
+func npmLockPackages(body []byte) ([]resolvedPackage, error) {
+	var doc struct {
+		Packages map[string]struct {
+			Name    string `json:"name"`
+			Version string `json:"version"`
+			Link    bool   `json:"link"`
+		} `json:"packages"`
+		Dependencies map[string]npmV1Dep `json:"dependencies"`
+	}
+	if err := json.Unmarshal(body, &doc); err != nil {
+		return nil, err
+	}
+	var out []resolvedPackage
+	for key, entry := range doc.Packages {
+		// Keys outside node_modules are the root and workspace sources, and
+		// links point at them; neither comes from the registry.
+		i := strings.LastIndex(key, "node_modules/")
+		if i < 0 || entry.Link || entry.Version == "" {
+			continue
+		}
+		name := entry.Name
+		if name == "" {
+			name = key[i+len("node_modules/"):]
+		}
+		out = append(out, resolvedPackage{Name: name, Version: entry.Version})
+	}
+	var walk func(name string, dep npmV1Dep)
+	walk = func(name string, dep npmV1Dep) {
+		out = append(out, resolvedPackage{Name: name, Version: dep.Version})
+		for child, sub := range dep.Dependencies {
+			walk(child, sub)
+		}
+	}
+	for name, dep := range doc.Dependencies {
+		walk(name, dep)
+	}
+	return out, nil
+}

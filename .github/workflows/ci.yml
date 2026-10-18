@@ -6,6 +6,10 @@ on:
   pull_request:
   workflow_dispatch: {}
 
+# Start from nothing so the workflow states its own token contract rather than
+# inheriting whatever the repository default happens to be. Jobs opt in below.
+permissions: {}
+
 jobs:
   test:
     runs-on: ubuntu-latest

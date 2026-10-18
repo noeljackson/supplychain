@@ -3,7 +3,8 @@
 // OSV/GHSA on recent npm campaigns (Mini Shai-Hulud, TeamPCP/Mistral, etc.).
 // The free-tier TOS permits ingestion into internal security tools.
 //
-// Activation: set SUPPLYCHAIN_OSM_TOKEN. Absent → integration is a no-op.
+// Activation: provide an explicit token or set SUPPLYCHAIN_OSM_TOKEN. Absent →
+// integration is a no-op.
 // Cache lives at $DataDir/osm-cache.json with full provenance per entry.
 package osm
 
@@ -37,6 +38,59 @@ const (
 
 // Token returns the bearer token from the environment, "" if unset.
 func Token() string { return os.Getenv(envToken) }
+
+// TokenFromFile reads an OSM bearer token from a dedicated owner-only regular
+// file. Symlinks and broader permissions are rejected before any content is
+// read so CI can consume an injected secret without exporting it.
+func TokenFromFile(path string) (string, error) {
+	info, err := os.Lstat(path)
+	if err != nil {
+		return "", fmt.Errorf("inspect OSM token file: %w", err)
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		return "", errors.New("OSM token file must not be a symlink")
+	}
+	if !info.Mode().IsRegular() {
+		return "", errors.New("OSM token file must be a regular file")
+	}
+	if info.Mode().Perm() != 0o600 {
+		return "", fmt.Errorf("OSM token file permissions are %04o, want 0600", info.Mode().Perm())
+	}
+
+	f, err := os.Open(path)
+	if err != nil {
+		return "", fmt.Errorf("open OSM token file: %w", err)
+	}
+	defer f.Close()
+
+	openedInfo, err := f.Stat()
+	if err != nil {
+		return "", fmt.Errorf("inspect opened OSM token file: %w", err)
+	}
+	if !openedInfo.Mode().IsRegular() || !os.SameFile(info, openedInfo) {
+		return "", errors.New("OSM token file changed while opening")
+	}
+	if openedInfo.Mode().Perm() != 0o600 {
+		return "", errors.New("OSM token file permissions changed while opening")
+	}
+
+	const maxTokenBytes = 64 << 10
+	b, err := io.ReadAll(io.LimitReader(f, maxTokenBytes+1))
+	if err != nil {
+		return "", fmt.Errorf("read OSM token file: %w", err)
+	}
+	if len(b) > maxTokenBytes {
+		return "", errors.New("OSM token file exceeds 64 KiB")
+	}
+	token := strings.TrimSpace(string(b))
+	if token == "" {
+		return "", errors.New("OSM token file is empty")
+	}
+	if strings.ContainsAny(token, " \t\r\n") {
+		return "", errors.New("OSM token file contains whitespace")
+	}
+	return token, nil
+}
 
 // Threat is the relevant subset of one entry in the query-latest response.
 type Threat struct {
@@ -134,8 +188,14 @@ func LoadCacheAsPackageIOCs(path string) ([]ioc.PackageIOC, error) {
 // treat this as a normal no-op, not an error. Returns the count of entries
 // added/skipped on success.
 func Refresh(ctx context.Context, dataDir string, ecosystems []string) (skipped bool, added int, ignored int, err error) {
-	tok := Token()
-	if tok == "" {
+	return RefreshWithToken(ctx, dataDir, ecosystems, Token())
+}
+
+// RefreshWithToken fetches and caches OSM intelligence using the supplied
+// bearer token. The token is never persisted in the cache or included in an
+// error message.
+func RefreshWithToken(ctx context.Context, dataDir string, ecosystems []string, token string) (skipped bool, added int, ignored int, err error) {
+	if token == "" {
 		return true, 0, 0, nil
 	}
 	if len(ecosystems) == 0 {
@@ -149,7 +209,7 @@ func Refresh(ctx context.Context, dataDir string, ecosystems []string) (skipped 
 	}
 
 	for _, eco := range ecosystems {
-		threats, err := queryLatest(ctx, client, tok, eco)
+		threats, err := queryLatest(ctx, client, token, eco)
 		if err != nil {
 			return false, 0, 0, fmt.Errorf("query-latest(%s): %w", eco, err)
 		}

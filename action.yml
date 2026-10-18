@@ -32,9 +32,13 @@ inputs:
     required: false
     default: ""
   refresh-osm:
-    description: Refresh OSM malware intelligence with SUPPLYCHAIN_OSM_TOKEN before scanning
+    description: Refresh OSM malware intelligence before scanning
     required: false
     default: "false"
+  osm-token-file:
+    description: Owner-only regular file containing the OSM bearer token
+    required: false
+    default: ""
   scan-source:
     description: Run repository, dependency, OSV, Bun, Gitleaks, and zizmor checks
     required: false
@@ -113,6 +117,7 @@ runs:
         INPUT_SOURCE_POLICY: ${{ inputs.source-policy }}
         INPUT_MAINTAINER_BASELINE: ${{ inputs.maintainer-baseline }}
         INPUT_REFRESH_OSM: ${{ inputs.refresh-osm }}
+        INPUT_OSM_TOKEN_FILE: ${{ inputs.osm-token-file }}
         SUPPLYCHAIN_BIN_DIR: ${{ runner.temp }}/supplychain-bin
       run: |
         set -euo pipefail
@@ -129,7 +134,12 @@ runs:
         fi
         refresh_args=()
         case "$INPUT_REFRESH_OSM" in
-          true) refresh_args+=(--refresh-osm) ;;
+          true)
+            refresh_args+=(--refresh-osm)
+            if [ -n "$INPUT_OSM_TOKEN_FILE" ]; then
+              refresh_args+=(--osm-token-file="$INPUT_OSM_TOKEN_FILE")
+            fi
+            ;;
           false) ;;
           *) echo "refresh-osm must be true or false" >&2; exit 2 ;;
         esac

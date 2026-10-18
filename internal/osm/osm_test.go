@@ -5,6 +5,8 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"reflect"
 	"sync/atomic"
 	"testing"
@@ -14,6 +16,46 @@ type roundTripperFunc func(*http.Request) (*http.Response, error)
 
 func (f roundTripperFunc) RoundTrip(req *http.Request) (*http.Response, error) {
 	return f(req)
+}
+
+func TestTokenFromFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "osm-token")
+	if err := os.WriteFile(path, []byte("test-token\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	token, err := TokenFromFile(path)
+	if err != nil {
+		t.Fatalf("TokenFromFile() error = %v", err)
+	}
+	if token != "test-token" {
+		t.Fatalf("TokenFromFile() returned an unexpected token")
+	}
+}
+
+func TestTokenFromFileRejectsUnsafeFiles(t *testing.T) {
+	dir := t.TempDir()
+	secure := filepath.Join(dir, "secure")
+	if err := os.WriteFile(secure, []byte("test-token"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	broader := filepath.Join(dir, "broader")
+	if err := os.WriteFile(broader, []byte("test-token"), 0o640); err != nil {
+		t.Fatal(err)
+	}
+	symlink := filepath.Join(dir, "symlink")
+	if err := os.Symlink(secure, symlink); err != nil {
+		t.Fatal(err)
+	}
+	directory := filepath.Join(dir, "directory")
+	if err := os.Mkdir(directory, 0o700); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, path := range []string{broader, symlink, directory} {
+		if _, err := TokenFromFile(path); err == nil {
+			t.Errorf("TokenFromFile(%q) unexpectedly succeeded", filepath.Base(path))
+		}
+	}
 }
 
 func TestParseVersionInfo_ConcretePins(t *testing.T) {

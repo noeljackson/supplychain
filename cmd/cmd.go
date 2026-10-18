@@ -252,7 +252,8 @@ flags (may appear anywhere):
                         supply-chain indicators fail the command.
   --scripts             include install/preinstall/postinstall script section
   --scripts-only        show only the install-script section (for audits)
-  --freshness           flag installed deps published in the last 7 days
+  --freshness           flag installed and lockfile-pinned deps published in
+                        the last 7 days
                         (queries npm registry; results cached 24h per package)
   --freshness-days=N    custom freshness window (implies --freshness)
   --signatures          run 'npm audit signatures' for projects with
@@ -280,7 +281,8 @@ environment:
                         When set, 'supplychain update' fetches /query-latest
                         and merges npm IOCs into the matcher set. Absent →
                         OSM integration is a no-op. Free-tier TOS: non-
-                        commercial use only.
+                        commercial use only. CI should prefer --osm-token-file
+                        with an injected mode-0600 regular file.
 `)
 }
 

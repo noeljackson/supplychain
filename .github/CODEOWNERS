@@ -1,6 +1,13 @@
 # Sensitive automation and release controls. Do not cover iocs/**: the
 # scheduled refresh workflow is deliberately allowed to auto-merge bounded,
 # IOC-only changes after CI succeeds.
+#
+# Advisory: a review checklist, not a gate. GitHub cannot require review for
+# specific paths alone — require_code_owner_review has no effect unless
+# required_approving_review_count is at least 1, and that count applies to every
+# pull request to the default branch, which would block the IOC refresh and
+# Dependabot auto-merges. Enforcing needs a second reviewing account plus bypass
+# actors for the merging bots.
 /.github/CODEOWNERS @noeljackson
 /.github/workflows/** @noeljackson
 /.github/actions/** @noeljackson
