@@ -90,6 +90,8 @@ database download command before sealing the runner image. The scanner reads
 those archives from its standard cache (for example,
 `$XDG_CACHE_HOME/osv-scanner/PyPI/all.zip`) and returns an operational failure
 when the offline scan cannot run; it never retries with legacy online syntax.
+Every ecosystem in the target needs its archive: if OSV Scanner cannot load one,
+the scan fails even when other ecosystems produced findings.
 
 ## Strict and auto policies
 
