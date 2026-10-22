@@ -99,11 +99,14 @@ type Findings struct {
 	Vendored    []vendorartifact.Issue `json:"vendored_npm_hits"`
 	Maintainers []maintainer.Hit       `json:"maintainer_changes"`
 	Drift       []drift.Hit            `json:"drift_hits"`
-	Suppressed  []policy.Suppressed    `json:"suppressed_findings"`
-	Coverage    check.Coverage         `json:"coverage"`
-	Policy      policy.Identity        `json:"policy"`
-	Helpers     map[string]string      `json:"helpers"`
-	DurationMS  int64                  `json:"duration_ms"`
+	// PolicyLockfiles are the lockfiles the source policy named for the OSV
+	// advisory check beyond the standard names.
+	PolicyLockfiles []osv.Lockfile      `json:"policy_lockfiles"`
+	Suppressed      []policy.Suppressed `json:"suppressed_findings"`
+	Coverage        check.Coverage      `json:"coverage"`
+	Policy          policy.Identity     `json:"policy"`
+	Helpers         map[string]string   `json:"helpers"`
+	DurationMS      int64               `json:"duration_ms"`
 
 	OSVAvailable bool      `json:"osv_available"`
 	OSVStatus    OSVStatus `json:"osv_status"`
@@ -357,7 +360,15 @@ func Run(opts Options) (f Findings, err error) {
 	}
 	f.Helpers["osv-scanner"] = osvVersion
 	checkStarted = time.Now()
-	osvHits, osvErr := osv.Scan(opts.BinDir, opts.Target, opts.OSVOffline)
+	lockfiles, lockfileErr := sourcePolicy.ResolveLockfiles(opts.Target)
+	if lockfileErr != nil {
+		f.Coverage.Set("osv", check.StatusFailed, opts.RequireOSV, lockfileErr.Error())
+		f.Coverage.SetDuration("osv", elapsedMS(checkStarted))
+		f.OSV, f.Drift, f.Suppressed = sourcePolicy.Apply(f.OSV, f.Drift)
+		return f, nil
+	}
+	f.PolicyLockfiles = lockfiles
+	osvHits, osvErr := osv.Scan(opts.BinDir, opts.Target, opts.OSVOffline, lockfiles)
 	if err := applyOSVResult(&f, osvHits, osvErr); err != nil {
 		f.Coverage.Set("osv", check.StatusFailed, opts.RequireOSV, err.Error())
 		f.Coverage.SetDuration("osv", elapsedMS(checkStarted))
