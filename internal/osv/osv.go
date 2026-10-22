@@ -14,6 +14,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"sort"
 	"strings"
@@ -127,7 +128,41 @@ func Scan(binDir, target string, offline bool) ([]PackageVuln, error) {
 			}
 		}
 	}
+	// osv-scanner skips an ecosystem whose offline database it cannot load
+	// and still exits 1 when another ecosystem has findings. A hermetic scan
+	// must not pass with an ecosystem silently unchecked.
+	if offline {
+		if missing := missingOfflineDatabases(err); len(missing) > 0 {
+			return nil, fmt.Errorf("osv-scanner offline scan could not load the %s database: %w",
+				strings.Join(missing, ", "), ErrOfflineDatabaseMissing)
+		}
+	}
 	return parse(out)
+}
+
+// ErrOfflineDatabaseMissing reports an ecosystem present in the target whose
+// offline OSV database is absent or unreadable.
+var ErrOfflineDatabaseMissing = errors.New("offline OSV database missing")
+
+var missingDatabaseRE = regexp.MustCompile(`could not load db for (\S+) ecosystem`)
+
+// missingOfflineDatabases returns the ecosystems osv-scanner reported it could
+// not load an offline database for. Only an exit with findings reaches here:
+// any other failure already failed closed above.
+func missingOfflineDatabases(err error) []string {
+	var exitErr *exec.ExitError
+	if !errors.As(err, &exitErr) {
+		return nil
+	}
+	seen := map[string]bool{}
+	var missing []string
+	for _, match := range missingDatabaseRE.FindAllStringSubmatch(string(exitErr.Stderr), -1) {
+		if !seen[match[1]] {
+			seen[match[1]] = true
+			missing = append(missing, match[1])
+		}
+	}
+	return missing
 }
 
 func scanArgs(target string, offline bool) []string {
