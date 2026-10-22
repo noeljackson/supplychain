@@ -242,6 +242,8 @@ intentionally deterministic and does not require it. Security-owned workflows
 that intentionally want live enrichment should inject a dedicated mode-`0600`
 regular file and use `--refresh-osm --osm-token-file=/path/to/token` (or the
 composite action's `osm-token-file` input). Symlinks, non-regular files, and
-broader permissions fail closed. `SUPPLYCHAIN_OSM_TOKEN` remains available for
-interactive compatibility; an explicit refresh fails closed if no token is
-available or the refresh fails.
+broader permissions fail closed. A workflow may instead inject the token into
+supplychain's environment as `SUPPLYCHAIN_OSM_TOKEN`: supplychain reads it once
+at start and removes it from its own environment before it starts any tool, so
+osv-scanner, gitleaks, syft, grype, zizmor, npm and git never inherit it. An
+explicit refresh fails closed if no token is available or the refresh fails.
