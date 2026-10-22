@@ -36,8 +36,29 @@ const (
 	queryLatestInitialBackoff = 200 * time.Millisecond
 )
 
-// Token returns the bearer token from the environment, "" if unset.
+// Token returns the bearer token from the environment, "" if unset. The CLI
+// does not use it: it takes the token with TakeEnvironmentToken instead.
 func Token() string { return os.Getenv(envToken) }
+
+// unsetenv is os.Unsetenv; tests replace it to prove the child-process test
+// detects a token left in the environment.
+var unsetenv = os.Unsetenv
+
+// TakeEnvironmentToken returns the bearer token and removes it from this
+// process's environment. The CLI calls it before anything else, so no tool it
+// starts (osv-scanner, gitleaks, syft, grype, zizmor, npm, git) inherits the
+// token: os/exec copies the process environment when a command starts, and
+// every explicit Cmd.Env is built from os.Environ() at that time.
+func TakeEnvironmentToken() (string, error) {
+	value, present := os.LookupEnv(envToken)
+	if !present {
+		return "", nil
+	}
+	if err := unsetenv(envToken); err != nil {
+		return "", fmt.Errorf("remove %s from the environment: %w", envToken, err)
+	}
+	return value, nil
+}
 
 // TokenFromFile reads an OSM bearer token from a dedicated owner-only regular
 // file. Symlinks and broader permissions are rejected before any content is
