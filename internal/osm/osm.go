@@ -3,8 +3,9 @@
 // OSV/GHSA on recent npm campaigns (Mini Shai-Hulud, TeamPCP/Mistral, etc.).
 // The free-tier TOS permits ingestion into internal security tools.
 //
-// Activation: provide an explicit token or set SUPPLYCHAIN_OSM_TOKEN. Absent →
-// integration is a no-op.
+// Activation: provide an explicit token, set SUPPLYCHAIN_OSM_TOKEN, or expose
+// OSM_API_KEY through a workstation secret environment. Absent → integration
+// is a no-op.
 // Cache lives at $DataDir/osm-cache.json with full provenance per entry.
 package osm
 
@@ -25,10 +26,11 @@ import (
 )
 
 const (
-	BaseURL     = "https://api.opensourcemalware.com/functions/v1"
-	envToken    = "SUPPLYCHAIN_OSM_TOKEN"
-	UserAgent   = "supplychain/dev (+https://github.com/noeljackson/supplychain)"
-	httpTimeout = 15 * time.Second
+	BaseURL          = "https://api.opensourcemalware.com/functions/v1"
+	envToken         = "SUPPLYCHAIN_OSM_TOKEN"
+	fallbackEnvToken = "OSM_API_KEY"
+	UserAgent        = "supplychain/dev (+https://github.com/noeljackson/supplychain)"
+	httpTimeout      = 15 * time.Second
 
 	// A live intelligence refresh is allowed to outlast one transient gateway
 	// failure, but remains bounded by the caller's context (30 seconds in CI).
@@ -36,26 +38,44 @@ const (
 	queryLatestInitialBackoff = 200 * time.Millisecond
 )
 
-// Token returns the bearer token from the environment, "" if unset. The CLI
-// does not use it: it takes the token with TakeEnvironmentToken instead.
-func Token() string { return os.Getenv(envToken) }
+// Token returns the bearer token from the environment, "" if unset. The
+// dedicated supplychain name takes precedence over the shared workstation
+// name. The CLI does not use this function: it takes and scrubs both names with
+// TakeEnvironmentToken instead.
+func Token() string {
+	if token := os.Getenv(envToken); token != "" {
+		return token
+	}
+	return os.Getenv(fallbackEnvToken)
+}
 
 // unsetenv is os.Unsetenv; tests replace it to prove the child-process test
 // detects a token left in the environment.
 var unsetenv = os.Unsetenv
 
-// TakeEnvironmentToken returns the bearer token and removes it from this
-// process's environment. The CLI calls it before anything else, so no tool it
-// starts (osv-scanner, gitleaks, syft, grype, zizmor, npm, git) inherits the
-// token: os/exec copies the process environment when a command starts, and
-// every explicit Cmd.Env is built from os.Environ() at that time.
+// TakeEnvironmentToken returns the bearer token and removes both supported
+// names from this process's environment. The dedicated supplychain name takes
+// precedence when both are populated. The CLI calls this before anything else,
+// so no tool it starts (osv-scanner, gitleaks, syft, grype, zizmor, npm, git)
+// inherits either name: os/exec copies the process environment when a command
+// starts, and every explicit Cmd.Env is built from os.Environ() at that time.
 func TakeEnvironmentToken() (string, error) {
-	value, present := os.LookupEnv(envToken)
-	if !present {
-		return "", nil
+	value := ""
+	var scrubErrors []error
+	for _, name := range []string{envToken, fallbackEnvToken} {
+		candidate, present := os.LookupEnv(name)
+		if !present {
+			continue
+		}
+		if value == "" && candidate != "" {
+			value = candidate
+		}
+		if err := unsetenv(name); err != nil {
+			scrubErrors = append(scrubErrors, fmt.Errorf("remove %s from the environment: %w", name, err))
+		}
 	}
-	if err := unsetenv(envToken); err != nil {
-		return "", fmt.Errorf("remove %s from the environment: %w", envToken, err)
+	if err := errors.Join(scrubErrors...); err != nil {
+		return "", err
 	}
 	return value, nil
 }
@@ -323,7 +343,7 @@ func queryLatestOnce(ctx context.Context, client *http.Client, token, eco, baseU
 	switch resp.StatusCode {
 	case 200:
 	case 401:
-		return nil, false, fmt.Errorf("auth failed (401) — check SUPPLYCHAIN_OSM_TOKEN")
+		return nil, false, fmt.Errorf("auth failed (401) — check SUPPLYCHAIN_OSM_TOKEN or OSM_API_KEY")
 	case 403:
 		return nil, false, fmt.Errorf("forbidden (403) — endpoint may require Pro tier")
 	case 429:

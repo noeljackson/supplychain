@@ -10,7 +10,7 @@ import (
 )
 
 // The test binary doubles as a fake osv-scanner. It records whether it
-// inherited SUPPLYCHAIN_OSM_TOKEN and reports no findings.
+// inherited either supported OSM token variable and reports no findings.
 func init() {
 	report := os.Getenv("TEST_CMD_OSV_ENV_REPORT")
 	if os.Getenv("GO_WANT_CMD_OSV_ENV_HELPER") != "1" || report == "" ||
@@ -21,7 +21,9 @@ func init() {
 		fmt.Println("osv-scanner fixture 1.0.0")
 		os.Exit(0)
 	}
-	_, present := os.LookupEnv("SUPPLYCHAIN_OSM_TOKEN")
+	_, dedicatedPresent := os.LookupEnv("SUPPLYCHAIN_OSM_TOKEN")
+	_, fallbackPresent := os.LookupEnv("OSM_API_KEY")
+	present := dedicatedPresent || fallbackPresent
 	if err := os.WriteFile(report, []byte(strconv.FormatBool(present)), 0o600); err != nil {
 		os.Exit(2)
 	}
@@ -30,7 +32,7 @@ func init() {
 }
 
 // Run takes the token before any tool starts: the osv-scanner it runs during a
-// scan never sees SUPPLYCHAIN_OSM_TOKEN, and the token is no longer in this
+// scan never sees either supported name, and the token is no longer in this
 // process's environment afterwards.
 func TestRunRemovesOSMTokenBeforeStartingTools(t *testing.T) {
 	binDir := t.TempDir()
@@ -62,7 +64,7 @@ func TestRunRemovesOSMTokenBeforeStartingTools(t *testing.T) {
 	}
 	t.Setenv("SUPPLYCHAIN_BIN_DIR", binDir)
 	t.Setenv("SUPPLYCHAIN_DATA_DIR", dataDir)
-	t.Setenv("SUPPLYCHAIN_OSM_TOKEN", "synthetic-osm-token")
+	t.Setenv("OSM_API_KEY", "synthetic-osm-token")
 
 	// The scan's own report is not under test; keep it out of the test log.
 	sink, err := os.Create(filepath.Join(t.TempDir(), "scan-output"))
@@ -84,9 +86,11 @@ func TestRunRemovesOSMTokenBeforeStartingTools(t *testing.T) {
 		t.Fatalf("osv-scanner did not run during the scan: %v", err)
 	}
 	if string(recorded) != "false" {
-		t.Fatalf("osv-scanner inherited SUPPLYCHAIN_OSM_TOKEN (report %q)", recorded)
+		t.Fatalf("osv-scanner inherited an OSM token (report %q)", recorded)
 	}
-	if _, present := os.LookupEnv("SUPPLYCHAIN_OSM_TOKEN"); present {
-		t.Fatal("SUPPLYCHAIN_OSM_TOKEN is still in the process environment after Run")
+	for _, name := range []string{"SUPPLYCHAIN_OSM_TOKEN", "OSM_API_KEY"} {
+		if _, present := os.LookupEnv(name); present {
+			t.Fatalf("%s is still in the process environment after Run", name)
+		}
 	}
 }

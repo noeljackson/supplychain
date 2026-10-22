@@ -37,8 +37,8 @@ func init() {
 // Globals holds the parsed global flags + dependencies passed down to commands.
 type Globals struct {
 	// OSMToken is the OpenSourceMalware bearer token taken from
-	// SUPPLYCHAIN_OSM_TOKEN at start-up. It lives only in memory: Run removes
-	// the variable from the environment before any tool starts.
+	// SUPPLYCHAIN_OSM_TOKEN or OSM_API_KEY at start-up. It lives only in memory:
+	// Run removes both variables from the environment before any tool starts.
 	OSMToken string
 
 	JSON           bool
@@ -297,8 +297,9 @@ environment:
   SUPPLYCHAIN_EOL_URL   origin of endoflife.date v1 product documents
                         (default: https://endoflife.date/api/v1/products)
   SUPPLYCHAIN_OSM_TOKEN OpenSourceMalware.com bearer token (free tier ok).
-                        Read once at start and removed from the environment,
-                        so no tool supplychain runs inherits it.
+  OSM_API_KEY           Fallback token name for shared workstation environments.
+                        Both names are read once at start and removed from the
+                        environment, so no tool supplychain runs inherits them.
                         When set, 'supplychain update' fetches /query-latest
                         and merges npm IOCs into the matcher set. Absent →
                         OSM integration is a no-op. Free-tier TOS: non-

@@ -255,7 +255,9 @@ that intentionally want live enrichment should inject a dedicated mode-`0600`
 regular file and use `--refresh-osm --osm-token-file=/path/to/token` (or the
 composite action's `osm-token-file` input). Symlinks, non-regular files, and
 broader permissions fail closed. A workflow may instead inject the token into
-supplychain's environment as `SUPPLYCHAIN_OSM_TOKEN`: supplychain reads it once
-at start and removes it from its own environment before it starts any tool, so
-osv-scanner, gitleaks, syft, grype, zizmor, npm and git never inherit it. An
-explicit refresh fails closed if no token is available or the refresh fails.
+supplychain's environment as `SUPPLYCHAIN_OSM_TOKEN`. Shared workstation secret
+environments may use `OSM_API_KEY`; the dedicated name takes precedence when
+both are set. Supplychain reads the token once at start and removes both names
+from its own environment before it starts any tool, so osv-scanner, gitleaks,
+syft, grype, zizmor, npm and git never inherit them. An explicit refresh fails
+closed if no token is available or the refresh fails.
