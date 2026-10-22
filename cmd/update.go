@@ -31,7 +31,7 @@ func cmdUpdate(g *Globals, args []string) int {
 	fmt.Println("==> refreshing OSM (OpenSourceMalware) cache")
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	skipped, added, ignored, err := osm.Refresh(ctx, g.DataDir, []string{"npm"})
+	skipped, added, ignored, err := osm.RefreshWithToken(ctx, g.DataDir, []string{"npm"}, g.OSMToken)
 	switch {
 	case skipped:
 		fmt.Println("    skipped — SUPPLYCHAIN_OSM_TOKEN not set")

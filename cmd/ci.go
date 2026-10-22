@@ -51,7 +51,7 @@ func cmdCI(g *Globals, args []string) int {
 	}
 
 	if *refreshOSM {
-		token := osm.Token()
+		token := g.OSMToken
 		if *osmTokenFile != "" {
 			token, err = osm.TokenFromFile(*osmTokenFile)
 			if err != nil {

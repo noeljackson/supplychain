@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/noeljackson/supplychain/internal/osm"
 	"github.com/noeljackson/supplychain/internal/report"
 )
 
@@ -35,6 +36,11 @@ func init() {
 
 // Globals holds the parsed global flags + dependencies passed down to commands.
 type Globals struct {
+	// OSMToken is the OpenSourceMalware bearer token taken from
+	// SUPPLYCHAIN_OSM_TOKEN at start-up. It lives only in memory: Run removes
+	// the variable from the environment before any tool starts.
+	OSMToken string
+
 	JSON           bool
 	Quiet          bool
 	NoUpdate       bool
@@ -82,7 +88,14 @@ type Globals struct {
 
 // Run dispatches the CLI. Returns an exit code.
 func Run(defaultIOCs embed.FS) int {
-	g := &Globals{DefaultIOCs: defaultIOCs}
+	// First, before any tool can start: move the OSM token out of the
+	// environment so no child process inherits it.
+	token, err := osm.TakeEnvironmentToken()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "error:", err)
+		return report.ExitOperational
+	}
+	g := &Globals{DefaultIOCs: defaultIOCs, OSMToken: token}
 
 	// Strip global flags from the full argv first, then take the first
 	// remaining token as the subcommand.
@@ -278,6 +291,8 @@ environment:
                         (default: https://raw.githubusercontent.com/noeljackson/supplychain/main/iocs)
   SUPPLYCHAIN_PIN       git ref / tag to pin IOC data to (default: main)
   SUPPLYCHAIN_OSM_TOKEN OpenSourceMalware.com bearer token (free tier ok).
+                        Read once at start and removed from the environment,
+                        so no tool supplychain runs inherits it.
                         When set, 'supplychain update' fetches /query-latest
                         and merges npm IOCs into the matcher set. Absent →
                         OSM integration is a no-op. Free-tier TOS: non-
