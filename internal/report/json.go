@@ -38,6 +38,8 @@ type PolicyIdentity struct {
 	Mode           string          `json:"mode"`
 	FailOnAdvisory bool            `json:"fail_on_advisory"`
 	Source         policy.Identity `json:"source"`
+	// Lockfiles are the lockfiles the source policy named for the OSV check.
+	Lockfiles []osv.Lockfile `json:"lockfiles"`
 }
 
 type Outcome struct {
@@ -122,6 +124,7 @@ func NewEnvelope(f scan.Findings, opts Options) Envelope {
 			Mode:           mode,
 			FailOnAdvisory: opts.FailOnAdvisory,
 			Source:         f.Policy,
+			Lockfiles:      nonNil(f.PolicyLockfiles),
 		},
 		IOCSnapshot: opts.IOCSnapshot,
 		Helpers:     copyMap(f.Helpers),

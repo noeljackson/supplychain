@@ -2,7 +2,8 @@
 
 Malware IOCs, payload names, typosquats, signature failures, and maintainer
 changes are always enforced. A source policy can only tune OSV vulnerability
-advisories and manifest/lockfile drift.
+advisories and manifest/lockfile drift, and name extra lockfiles for the OSV
+advisory check to read.
 
 By default every OSV advisory and drift finding is reported. Strict mode fails
 on them. To set a threshold, commit `.supplychain/source-policy.json`:
@@ -52,3 +53,33 @@ owner, and expiry. Expired exceptions fail the scan instead of being ignored.
 The policy must be Git-tracked, contained by the scan target, regular,
 non-symlinked, valid JSON, and no larger than 64 KiB. External paths, unknown
 fields, duplicate selectors, and trailing JSON are rejected.
+
+## Lockfiles with non-standard names
+
+The OSV advisory check finds lockfiles by their standard names (`Cargo.lock`,
+`package-lock.json`, `go.mod`, and so on). A lockfile kept under another name,
+such as an image's `deployments/docker/derp.Cargo.lock`, is not read unless the
+policy names it:
+
+```json
+{
+  "schema_version": 1,
+  "advisories": {"minimum_severity": "high", "only_fixed": true},
+  "exceptions": [],
+  "lockfiles": ["deployments/docker/*.Cargo.lock"]
+}
+```
+
+Each entry is a target-relative pattern (`*`, `?` and `[...]` within one path
+segment). Its file name must be the format name or end in `.<format>`, which
+says how the file is parsed: `Cargo.lock`, `package-lock.json`,
+`pnpm-lock.yaml`, `yarn.lock`, `bun.lock`, `go.mod`, `requirements.txt`,
+`poetry.lock`, `Pipfile.lock`, `uv.lock`, `Gemfile.lock`, `composer.lock`,
+`pom.xml` or `gradle.lockfile`. The named lockfiles fail closed:
+- a pattern that matches no file fails the OSV check;
+- so does a matched file that is untracked, a symlink or not a regular file;
+- so does a file osv-scanner cannot parse.
+
+Advisories found in these files follow the same thresholds and exceptions as
+any other lockfile. Older scanners reject a policy with `lockfiles` as an
+unknown field, so move the scanner first.

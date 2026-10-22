@@ -11,6 +11,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -50,6 +51,30 @@ type Document struct {
 	SchemaVersion int            `json:"schema_version"`
 	Advisories    AdvisoryPolicy `json:"advisories"`
 	Exceptions    []Exception    `json:"exceptions"`
+	// Lockfiles names lockfiles the OSV advisory check must read although
+	// their names are not the standard ones, e.g. image lockfiles such as
+	// "deployments/docker/*.Cargo.lock". Each entry is a target-relative
+	// pattern (path.Match syntax per segment) whose file name ends in
+	// ".<format>" or is "<format>", for a format in LockfileFormats.
+	Lockfiles []string `json:"lockfiles,omitempty"`
+}
+
+// LockfileFormats are the lockfile formats a policy may name, by the file name
+// osv-scanner parses them as.
+var LockfileFormats = []string{
+	"Cargo.lock", "package-lock.json", "pnpm-lock.yaml", "yarn.lock", "bun.lock",
+	"go.mod", "requirements.txt", "poetry.lock", "Pipfile.lock", "uv.lock",
+	"Gemfile.lock", "composer.lock", "pom.xml", "gradle.lockfile",
+}
+
+// lockfileFormat returns the format a lockfile name declares, or "".
+func lockfileFormat(name string) string {
+	for _, format := range LockfileFormats {
+		if name == format || strings.HasSuffix(name, "."+format) {
+			return format
+		}
+	}
+	return ""
 }
 
 type Loaded struct {
@@ -118,7 +143,7 @@ func Load(target, requested string, now time.Time) (Loaded, error) {
 	if info.Size() > maxSize {
 		return Loaded{}, fmt.Errorf("source policy exceeds %d bytes", maxSize)
 	}
-	if err := requireTracked(targetAbs, policyPath); err != nil {
+	if err := requireTracked(targetAbs, policyPath, "source policy"); err != nil {
 		return Loaded{}, err
 	}
 	body, err := os.ReadFile(policyPath)
@@ -160,20 +185,20 @@ func ensureJSONEOF(decoder *json.Decoder) error {
 	return nil
 }
 
-func requireTracked(target, policyPath string) error {
+func requireTracked(target, file, noun string) error {
 	rootOutput, err := exec.Command("git", "-C", target, "rev-parse", "--show-toplevel").Output()
 	if err != nil {
-		return errors.New("source policy requires a Git worktree")
+		return fmt.Errorf("%s requires a Git worktree", noun)
 	}
 	root := strings.TrimSpace(string(rootOutput))
-	rel, err := filepath.Rel(root, policyPath)
+	rel, err := filepath.Rel(root, file)
 	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) {
-		return errors.New("source policy is outside the Git worktree")
+		return fmt.Errorf("%s is outside the Git worktree", noun)
 	}
 	if err := exec.Command(
 		"git", "-C", root, "ls-files", "--error-unmatch", "--", filepath.ToSlash(rel),
 	).Run(); err != nil {
-		return errors.New("source policy must be tracked by Git")
+		return fmt.Errorf("%s must be tracked by Git", noun)
 	}
 	return nil
 }
@@ -187,6 +212,9 @@ func validate(document Document, now time.Time) error {
 			"source policy: invalid minimum_severity %q",
 			document.Advisories.MinimumSeverity,
 		)
+	}
+	if err := validateLockfiles(document.Lockfiles); err != nil {
+		return err
 	}
 	seen := make(map[string]struct{})
 	today := dateOnly(now)
@@ -228,6 +256,78 @@ func validate(document Document, now time.Time) error {
 		seen[key] = struct{}{}
 	}
 	return nil
+}
+
+func validateLockfiles(patterns []string) error {
+	seen := make(map[string]struct{}, len(patterns))
+	for i, pattern := range patterns {
+		prefix := fmt.Sprintf("source policy lockfile %d", i)
+		clean := path.Clean(pattern)
+		switch {
+		case pattern == "" || strings.ContainsRune(pattern, '\\'):
+			return fmt.Errorf("%s: must be a non-empty forward-slash path", prefix)
+		case path.IsAbs(pattern) || clean != pattern || clean == ".." || strings.HasPrefix(clean, "../"):
+			return fmt.Errorf("%s: must be a clean path inside the target", prefix)
+		}
+		if _, err := path.Match(pattern, ""); err != nil {
+			return fmt.Errorf("%s: invalid pattern: %w", prefix, err)
+		}
+		if lockfileFormat(path.Base(pattern)) == "" {
+			return fmt.Errorf("%s: file name must end in .<format> for one of %s",
+				prefix, strings.Join(LockfileFormats, ", "))
+		}
+		if _, duplicate := seen[pattern]; duplicate {
+			return fmt.Errorf("%s: duplicate pattern", prefix)
+		}
+		seen[pattern] = struct{}{}
+	}
+	return nil
+}
+
+// ResolveLockfiles expands the policy's lockfile patterns inside target. Every
+// pattern must match at least one regular, non-symlinked file that Git tracks;
+// otherwise the named coverage would silently shrink, so it is an error.
+func (loaded Loaded) ResolveLockfiles(target string) ([]osv.Lockfile, error) {
+	if len(loaded.Document.Lockfiles) == 0 {
+		return nil, nil
+	}
+	targetAbs, err := filepath.Abs(target)
+	if err != nil {
+		return nil, err
+	}
+	var lockfiles []osv.Lockfile
+	for _, pattern := range loaded.Document.Lockfiles {
+		matches, err := filepath.Glob(filepath.Join(targetAbs, filepath.FromSlash(pattern)))
+		if err != nil {
+			return nil, fmt.Errorf("source policy lockfile %q: %w", pattern, err)
+		}
+		if len(matches) == 0 {
+			return nil, fmt.Errorf("source policy lockfile %q matches no file", pattern)
+		}
+		sort.Strings(matches)
+		for _, match := range matches {
+			rel, err := filepath.Rel(targetAbs, match)
+			if err != nil {
+				return nil, err
+			}
+			noun := "source policy lockfile " + filepath.ToSlash(rel)
+			info, err := os.Lstat(match)
+			if err != nil {
+				return nil, fmt.Errorf("%s: %w", noun, err)
+			}
+			if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
+				return nil, fmt.Errorf("%s must be a regular, non-symlinked file", noun)
+			}
+			if err := requireTracked(targetAbs, match, noun); err != nil {
+				return nil, err
+			}
+			lockfiles = append(lockfiles, osv.Lockfile{
+				Format: lockfileFormat(filepath.Base(match)),
+				Path:   match,
+			})
+		}
+	}
+	return lockfiles, nil
 }
 
 func dateOnly(value time.Time) time.Time {

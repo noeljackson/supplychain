@@ -80,10 +80,17 @@ var ErrNoPackageSources = errors.New("no package sources found")
 
 var scanTimeout = 120 * time.Second
 
-// Scan runs osv-scanner against target and returns parsed findings.
-// Returns (nil, nil) if osv-scanner is unavailable — that's an expected
-// state, not an error.
-func Scan(binDir, target string, offline bool) ([]PackageVuln, error) {
+// Lockfile is a lockfile osv-scanner must read although its name is not a
+// standard one: Path is parsed as Format, e.g. Cargo.lock.
+type Lockfile struct {
+	Format string `json:"format"`
+	Path   string `json:"path"`
+}
+
+// Scan runs osv-scanner against target, plus any explicitly named lockfiles,
+// and returns parsed findings. Returns (nil, nil) if osv-scanner is
+// unavailable — that's an expected state, not an error.
+func Scan(binDir, target string, offline bool, lockfiles []Lockfile) ([]PackageVuln, error) {
 	path, _, err := Locate(binDir)
 	if err != nil {
 		return nil, nil
@@ -94,7 +101,7 @@ func Scan(binDir, target string, offline bool) ([]PackageVuln, error) {
 
 	// osv-scanner v2 changed the CLI to `osv-scanner scan source`; older
 	// versions accepted a bare path. Try the new form first, fall back.
-	args := scanArgs(target, offline)
+	args := scanArgs(target, offline, lockfiles)
 	cmd := exec.CommandContext(ctx, path, args...)
 	out, err := cmd.Output()
 	if err != nil {
@@ -112,6 +119,11 @@ func Scan(binDir, target string, offline bool) ([]PackageVuln, error) {
 			// turning a hermetic scan into an online one.
 			if offline {
 				return nil, fmt.Errorf("osv-scanner offline scan failed: %w", err)
+			}
+			// The legacy syntax cannot name lockfiles, so retrying with it would
+			// silently drop them: a missing or malformed named lockfile fails.
+			if len(lockfiles) > 0 {
+				return nil, fmt.Errorf("osv-scanner scan of the named lockfiles failed: %w", err)
 			}
 			cmd = exec.CommandContext(ctx, path, "--recursive", "--format", "json", target)
 			out, err = cmd.Output()
@@ -165,8 +177,11 @@ func missingOfflineDatabases(err error) []string {
 	return missing
 }
 
-func scanArgs(target string, offline bool) []string {
+func scanArgs(target string, offline bool, lockfiles []Lockfile) []string {
 	args := []string{"scan", "source", "--recursive", "--format", "json"}
+	for _, lockfile := range lockfiles {
+		args = append(args, "--lockfile", lockfile.Format+":"+lockfile.Path)
+	}
 	if offline {
 		args = append(args, "--offline", "--offline-vulnerabilities", "--no-resolve")
 	}

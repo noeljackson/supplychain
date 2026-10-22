@@ -13,7 +13,8 @@
       "name": "repository-source-policy",
       "path": ".supplychain/source-policy.json",
       "sha256": "policy-digest"
-    }
+    },
+    "lockfiles": []
   },
   "ioc_snapshot": {
     "source": "embedded",

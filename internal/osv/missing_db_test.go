@@ -46,7 +46,7 @@ const goDatabaseMissing = "could not load db for Go ecosystem: unable to fetch O
 
 func TestOfflineScanFailsWhenAnEcosystemDatabaseIsMissingBesideFindings(t *testing.T) {
 	binDir := missingDatabaseScanner(t, goDatabaseMissing)
-	_, err := Scan(binDir, t.TempDir(), true)
+	_, err := Scan(binDir, t.TempDir(), true, nil)
 	if !errors.Is(err, ErrOfflineDatabaseMissing) || !strings.Contains(err.Error(), "Go database") {
 		t.Fatalf("Scan() error = %v, want the missing Go database", err)
 	}
@@ -55,7 +55,7 @@ func TestOfflineScanFailsWhenAnEcosystemDatabaseIsMissingBesideFindings(t *testi
 func TestOfflineScanNamesEveryMissingDatabaseOnce(t *testing.T) {
 	binDir := missingDatabaseScanner(t, goDatabaseMissing+"\n"+
 		"could not load db for npm ecosystem: unable to fetch OSV database\n"+goDatabaseMissing)
-	_, err := Scan(binDir, t.TempDir(), true)
+	_, err := Scan(binDir, t.TempDir(), true, nil)
 	if err == nil || !strings.Contains(err.Error(), "the Go, npm database") {
 		t.Fatalf("Scan() error = %v, want Go and npm named once each", err)
 	}
@@ -63,7 +63,7 @@ func TestOfflineScanNamesEveryMissingDatabaseOnce(t *testing.T) {
 
 func TestOfflineScanWithEveryDatabaseKeepsItsFindings(t *testing.T) {
 	binDir := missingDatabaseScanner(t, "")
-	findings, err := Scan(binDir, t.TempDir(), true)
+	findings, err := Scan(binDir, t.TempDir(), true, nil)
 	if err != nil || len(findings) != 1 || findings[0].Name != "time" {
 		t.Fatalf("Scan() = %+v, %v; want the crates.io finding", findings, err)
 	}
@@ -71,7 +71,7 @@ func TestOfflineScanWithEveryDatabaseKeepsItsFindings(t *testing.T) {
 
 func TestOnlineScanIgnoresOfflineDatabaseMessages(t *testing.T) {
 	binDir := missingDatabaseScanner(t, goDatabaseMissing)
-	findings, err := Scan(binDir, t.TempDir(), false)
+	findings, err := Scan(binDir, t.TempDir(), false, nil)
 	if err != nil || len(findings) != 1 {
 		t.Fatalf("Scan() = %+v, %v; want the online result unchanged", findings, err)
 	}
