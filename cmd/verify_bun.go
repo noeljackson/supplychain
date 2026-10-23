@@ -18,8 +18,8 @@ func cmdVerifyBun(g *Globals, args []string) int {
 	minimumAge := fs.Int("minimum-age-days", 7, "minimum npm package publication age")
 	baseline := fs.String("baseline", "", "reviewed Bun dependency baseline")
 	writeBaseline := fs.Bool("write-baseline", false, "write a new baseline after all registry checks pass")
-	if err := fs.Parse(args); err != nil {
-		return 2
+	if err := parseFlags(fs, args); err != nil {
+		return flagExit(err)
 	}
 	target := "."
 	if fs.NArg() > 0 {

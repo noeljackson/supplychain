@@ -28,8 +28,8 @@ func cmdCI(g *Globals, args []string) int {
 		"osm-token-file", "",
 		"read the OSM bearer token from an owner-only regular file",
 	)
-	if err := fs.Parse(args); err != nil {
-		return 2
+	if err := parseFlags(fs, args); err != nil {
+		return flagExit(err)
 	}
 	if *policy != "auto" && *policy != "strict" {
 		fmt.Fprintln(os.Stderr, "ci: policy must be auto or strict")

@@ -11,6 +11,12 @@ import (
 )
 
 func cmdWorkflows(g *Globals, args []string) int {
+	parsed, parseErr := pathArgs("workflows", args)
+	if parseErr != nil {
+		return flagExit(parseErr)
+	}
+	args = parsed
+
 	target := "."
 	if len(args) > 1 {
 		fmt.Fprintln(os.Stderr, "usage: supplychain workflows [path]")

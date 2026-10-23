@@ -4,9 +4,9 @@ set -euo pipefail
 # Keep this release and checksum in lockstep with go.mod. We install into a
 # run-unique directory rather than the shared Go-version cache slot: scoped
 # push and PR workflows can start simultaneously on the same Gitea runner.
-readonly GO_VERSION='1.26.5'
-readonly GO_ARCHIVE_URL='https://go.dev/dl/go1.26.5.linux-amd64.tar.gz'
-readonly GO_ARCHIVE_SHA256='5c2c3b16caefa1d968a94c1daca04a7ca301a496d9b086e17ad77bb81393f053'
+readonly GO_VERSION='1.27.3'
+readonly GO_ARCHIVE_URL='https://go.dev/dl/go1.27.3.linux-amd64.tar.gz'
+readonly GO_ARCHIVE_SHA256='65efbc80fdc1fa2cd2631cad5b481777a68e8725f34e89f50fc6ac714e379b40'
 
 if [[ "${RUNNER_OS:-Linux}" != 'Linux' || "$(uname -m)" != 'x86_64' ]]; then
   printf 'supplychain action supports Linux x86_64 runners only\n' >&2

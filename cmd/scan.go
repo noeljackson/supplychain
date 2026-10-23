@@ -12,6 +12,12 @@ import (
 )
 
 func cmdScan(g *Globals, args []string) int {
+	parsed, parseErr := pathArgs("scan", args)
+	if parseErr != nil {
+		return flagExit(parseErr)
+	}
+	args = parsed
+
 	if len(args) > 1 {
 		fmt.Fprintln(os.Stderr, "usage: supplychain scan [path]")
 		return report.ExitUsage

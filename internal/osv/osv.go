@@ -4,6 +4,7 @@
 package osv
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/json"
@@ -103,7 +104,19 @@ func Scan(binDir, target string, offline bool, lockfiles []Lockfile) ([]PackageV
 	// versions accepted a bare path. Try the new form first, fall back.
 	args := scanArgs(target, offline, lockfiles)
 	cmd := exec.CommandContext(ctx, path, args...)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
 	out, err := cmd.Output()
+	if offline {
+		if missing := missingOfflineDatabases(stderr.Bytes()); len(missing) > 0 {
+			return nil, &OfflineDatabasesMissingError{Ecosystems: missing}
+		}
+	}
+	// Preserve stderr for the no-source classifier when using an explicit buffer.
+	var firstExit *exec.ExitError
+	if errors.As(err, &firstExit) {
+		firstExit.Stderr = stderr.Bytes()
+	}
 	if err != nil {
 		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
 			return nil, errors.New("osv-scanner timed out")
@@ -140,15 +153,6 @@ func Scan(binDir, target string, offline bool, lockfiles []Lockfile) ([]PackageV
 			}
 		}
 	}
-	// osv-scanner skips an ecosystem whose offline database it cannot load
-	// and still exits 1 when another ecosystem has findings. A hermetic scan
-	// must not pass with an ecosystem silently unchecked.
-	if offline {
-		if missing := missingOfflineDatabases(err); len(missing) > 0 {
-			return nil, fmt.Errorf("osv-scanner offline scan could not load the %s database: %w",
-				strings.Join(missing, ", "), ErrOfflineDatabaseMissing)
-		}
-	}
 	return parse(out)
 }
 
@@ -156,19 +160,26 @@ func Scan(binDir, target string, offline bool, lockfiles []Lockfile) ([]PackageV
 // offline OSV database is absent or unreadable.
 var ErrOfflineDatabaseMissing = errors.New("offline OSV database missing")
 
+// OfflineDatabasesMissingError names coverage gaps without requiring consumers
+// to parse a human diagnostic. It also unwraps to ErrOfflineDatabaseMissing.
+type OfflineDatabasesMissingError struct {
+	Ecosystems []string
+}
+
+func (e *OfflineDatabasesMissingError) Error() string {
+	return fmt.Sprintf("osv-scanner offline scan could not load the %s database: %v; supply these ecosystems in the offline advisory bundle",
+		strings.Join(e.Ecosystems, ", "), ErrOfflineDatabaseMissing)
+}
+
+func (e *OfflineDatabasesMissingError) Unwrap() error { return ErrOfflineDatabaseMissing }
+
 var missingDatabaseRE = regexp.MustCompile(`could not load db for (\S+) ecosystem`)
 
-// missingOfflineDatabases returns the ecosystems osv-scanner reported it could
-// not load an offline database for. Only an exit with findings reaches here:
-// any other failure already failed closed above.
-func missingOfflineDatabases(err error) []string {
-	var exitErr *exec.ExitError
-	if !errors.As(err, &exitErr) {
-		return nil
-	}
+// Check warnings on every exit status, including a successful partial scan.
+func missingOfflineDatabases(stderr []byte) []string {
 	seen := map[string]bool{}
 	var missing []string
-	for _, match := range missingDatabaseRE.FindAllStringSubmatch(string(exitErr.Stderr), -1) {
+	for _, match := range missingDatabaseRE.FindAllStringSubmatch(string(stderr), -1) {
 		if !seen[match[1]] {
 			seen[match[1]] = true
 			missing = append(missing, match[1])

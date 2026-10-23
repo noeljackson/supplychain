@@ -53,10 +53,12 @@ type Outcome struct {
 }
 
 type Diagnostic struct {
-	Check    string       `json:"check"`
-	Status   check.Status `json:"status"`
-	Required bool         `json:"required"`
-	Message  string       `json:"message"`
+	Check      string       `json:"check"`
+	Status     check.Status `json:"status"`
+	Required   bool         `json:"required"`
+	Message    string       `json:"message"`
+	Code       string       `json:"code,omitempty"`
+	Ecosystems []string     `json:"ecosystems,omitempty"`
 }
 
 type Timings struct {
@@ -187,10 +189,12 @@ func diagnostics(coverage check.Coverage) []Diagnostic {
 	for _, name := range names {
 		result := coverage[name]
 		out = append(out, Diagnostic{
-			Check:    name,
-			Status:   result.Status,
-			Required: result.Required,
-			Message:  result.Diagnostic,
+			Check:      name,
+			Status:     result.Status,
+			Required:   result.Required,
+			Message:    result.Diagnostic,
+			Code:       result.Code,
+			Ecosystems: result.Ecosystems,
 		})
 	}
 	return out
