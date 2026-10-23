@@ -17,8 +17,8 @@ func cmdImage(g *Globals, args []string) int {
 	failOn := fs.String("fail-on", "high", "minimum failing severity")
 	onlyFixed := fs.Bool("only-fixed", false, "only fail vulnerabilities with a fix")
 	vex := fs.String("vex", "", "explicit reviewed OpenVEX document inside the current Git worktree")
-	if err := fs.Parse(args); err != nil {
-		return 2
+	if err := parseFlags(fs, args); err != nil {
+		return flagExit(err)
 	}
 	if fs.NArg() != 1 {
 		fmt.Fprintln(os.Stderr, "usage: supplychain image [--sbom=PATH] [--fail-on=high] [--only-fixed] [--vex=PATH] IMAGE")

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -24,7 +25,11 @@ func init() {
 		fmt.Fprintln(os.Stderr, message)
 	}
 	fmt.Print(`{"results":[{"source":{"path":"Cargo.lock"},"packages":[{"package":{"name":"time","version":"0.1.43","ecosystem":"crates.io"},"vulnerabilities":[{"id":"RUSTSEC-2020-0071"}]}]}]}`)
-	os.Exit(1)
+	exit := 1
+	if value := os.Getenv("TEST_OSV_MISSING_DB_EXIT"); value != "" {
+		exit, _ = strconv.Atoi(value)
+	}
+	os.Exit(exit)
 }
 
 func missingDatabaseScanner(t *testing.T, stderr string) string {
@@ -58,6 +63,20 @@ func TestOfflineScanNamesEveryMissingDatabaseOnce(t *testing.T) {
 	_, err := Scan(binDir, t.TempDir(), true, nil)
 	if err == nil || !strings.Contains(err.Error(), "the Go, npm database") {
 		t.Fatalf("Scan() error = %v, want Go and npm named once each", err)
+	}
+}
+
+func TestOfflineScanReportsMissingDatabasesOnEveryExitStatus(t *testing.T) {
+	for _, exit := range []string{"0", "1", "2"} {
+		t.Run(exit, func(t *testing.T) {
+			binDir := missingDatabaseScanner(t, "could not load db for Maven ecosystem: missing\ncould not load db for RubyGems ecosystem: missing")
+			t.Setenv("TEST_OSV_MISSING_DB_EXIT", exit)
+			_, err := Scan(binDir, t.TempDir(), true, nil)
+			var missing *OfflineDatabasesMissingError
+			if !errors.As(err, &missing) || strings.Join(missing.Ecosystems, ",") != "Maven,RubyGems" {
+				t.Fatalf("Scan error = %v, want structured missing Maven and RubyGems coverage", err)
+			}
+		})
 	}
 }
 

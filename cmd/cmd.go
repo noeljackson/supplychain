@@ -152,7 +152,11 @@ func Run(defaultIOCs embed.FS) int {
 
 func parseGlobalFlags(g *Globals, args []string) []string {
 	out := make([]string, 0, len(args))
-	for _, a := range args {
+	for i, a := range args {
+		if a == "--" {
+			out = append(out, args[i:]...)
+			break
+		}
 		switch {
 		case a == "--json":
 			g.JSON = true

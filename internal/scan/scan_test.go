@@ -28,7 +28,33 @@ func init() {
 	if strings.TrimSpace(os.Getenv("TEST_SCAN_OSV_OUTPUT")) == "" {
 		fmt.Print(`{"results":[]}`)
 	}
+	if message := os.Getenv("TEST_SCAN_OSV_STDERR"); message != "" {
+		fmt.Fprintln(os.Stderr, message)
+	}
 	os.Exit(0)
+}
+
+func TestMissingOfflineEcosystemsAreStructuredCoverageFailure(t *testing.T) {
+	binDir := t.TempDir()
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(executable, filepath.Join(binDir, "osv-scanner")); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("GO_WANT_SCAN_OSV_HELPER", "1")
+	t.Setenv("TEST_SCAN_OSV_STDERR", "could not load db for RubyGems ecosystem: absent")
+	findings, err := Run(Options{Target: t.TempDir(), BinDir: binDir,
+		OpenIOC: testIOCs(t), OSVOffline: true, RequireOSV: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := findings.Coverage["osv"]
+	if result.Status != check.StatusFailed || result.Code != "offline-databases-missing" ||
+		len(result.Ecosystems) != 1 || result.Ecosystems[0] != "RubyGems" || !findings.HasRequiredCoverageGaps() {
+		t.Fatalf("missing coverage was lost: %+v", result)
+	}
 }
 
 func TestNoPackageSourcesIsNotApplicable(t *testing.T) {

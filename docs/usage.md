@@ -90,6 +90,17 @@ database download command before sealing the runner image. The scanner reads
 those archives from its standard cache (for example,
 `$XDG_CACHE_HOME/osv-scanner/PyPI/all.zip`) and returns an operational failure
 when the offline scan cannot run; it never retries with legacy online syntax.
+
+The offline bundle must include every ecosystem detected in the target. For
+example, a repository with mobile manifests can need `Maven` and `RubyGems`
+alongside `npm` and `Go`. A missing database remains a coverage failure even
+when OSV Scanner returns success or findings for another ecosystem. JSON reports
+include `code: "offline-databases-missing"` and an `ecosystems` array in the OSV
+check and diagnostic, so CI can report the missing inputs without parsing prose.
+
+Subcommand options work before or after their target, such as
+`supplychain image app:release --fail-on=critical --sbom=app.spdx.json`.
+Use `--` before a literal target beginning with a dash; `scan --help` prints help.
 Every ecosystem in the target needs its archive: if OSV Scanner cannot load one,
 the scan fails even when other ecosystems produced findings.
 

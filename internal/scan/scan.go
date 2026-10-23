@@ -371,6 +371,13 @@ func Run(opts Options) (f Findings, err error) {
 	osvHits, osvErr := osv.Scan(opts.BinDir, opts.Target, opts.OSVOffline, lockfiles)
 	if err := applyOSVResult(&f, osvHits, osvErr); err != nil {
 		f.Coverage.Set("osv", check.StatusFailed, opts.RequireOSV, err.Error())
+		var missing *osv.OfflineDatabasesMissingError
+		if errors.As(err, &missing) {
+			result := f.Coverage["osv"]
+			result.Code = "offline-databases-missing"
+			result.Ecosystems = append([]string(nil), missing.Ecosystems...)
+			f.Coverage["osv"] = result
+		}
 		f.Coverage.SetDuration("osv", elapsedMS(checkStarted))
 		f.OSV, f.Drift, f.Suppressed = sourcePolicy.Apply(f.OSV, f.Drift)
 		return f, nil

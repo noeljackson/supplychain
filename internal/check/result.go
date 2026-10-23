@@ -14,10 +14,12 @@ const (
 
 // Result is the coverage outcome for one named check.
 type Result struct {
-	Status     Status `json:"status"`
-	Required   bool   `json:"required"`
-	Diagnostic string `json:"diagnostic,omitempty"`
-	DurationMS int64  `json:"duration_ms"`
+	Status     Status   `json:"status"`
+	Required   bool     `json:"required"`
+	Diagnostic string   `json:"diagnostic,omitempty"`
+	DurationMS int64    `json:"duration_ms"`
+	Code       string   `json:"code,omitempty"`
+	Ecosystems []string `json:"ecosystems,omitempty"`
 }
 
 // Coverage maps stable check identifiers to their result.

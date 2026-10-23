@@ -80,8 +80,8 @@ func cmdInit(_ *Globals, args []string) int {
 	ref := fs.String("ref", "", "immutable supplychain action commit SHA")
 	policy := fs.String("policy", "strict", "auto or strict")
 	force := fs.Bool("force", false, "replace an existing workflow")
-	if err := fs.Parse(args[1:]); err != nil {
-		return 2
+	if err := parseFlags(fs, args[1:]); err != nil {
+		return flagExit(err)
 	}
 	if len(*ref) != 40 || strings.Trim(*ref, "0123456789abcdef") != "" {
 		fmt.Fprintln(os.Stderr, "init "+platform+": --ref must be a lowercase full commit SHA")
