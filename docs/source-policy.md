@@ -6,7 +6,10 @@ advisories, manifest/lockfile drift and end-of-life runtime findings, and name
 extra lockfiles for the OSV advisory check to read.
 
 By default every OSV advisory and drift finding is reported. Strict mode fails
-on them. To set a threshold, commit `.supplychain/source-policy.json`:
+on them. A Cargo.lock entry without a `source` is a path or workspace crate
+built from the repository itself, so the OSV check never reports a registry
+crate's advisory against it; it still reports a registry entry with the same
+name and version. To set a threshold, commit `.supplychain/source-policy.json`:
 
 ```json
 {
