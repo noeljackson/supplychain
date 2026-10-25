@@ -66,6 +66,8 @@
     "vendored_npm": [],
     "maintainers": [],
     "lockfile_drift": [],
+    "runtime_eol": [],
+    "runtime_stale": [],
     "suppressed": []
   }
 }

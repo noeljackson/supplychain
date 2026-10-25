@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/noeljackson/supplychain/internal/drift"
+	"github.com/noeljackson/supplychain/internal/eol"
 	"github.com/noeljackson/supplychain/internal/osv"
 )
 
@@ -180,4 +181,57 @@ func validPolicy(expiry string) string {
 	    "expires": "` + expiry + `"
 	  }]
 	}`
+}
+
+func TestEOLExceptionsAreDatedAndExact(t *testing.T) {
+	for name, testCase := range map[string]struct {
+		exception string
+		want      string
+	}{
+		"missing cycle": {
+			`{"kind":"eol","package":"nodejs","reason":"r","owner":"@o","expires":"2026-12-01"}`,
+			"cycle is required only for eol",
+		},
+		"cycle on osv": {
+			`{"kind":"osv","advisory_id":"GHSA-1","package":"p","cycle":"20","reason":"r","owner":"@o","expires":"2026-12-01"}`,
+			"advisory_id is required only for osv",
+		},
+		"expired": {
+			`{"kind":"eol","package":"nodejs","cycle":"20","reason":"r","owner":"@o","expires":"2026-07-24"}`,
+			"expired",
+		},
+		"unknown kind": {
+			`{"kind":"stale","package":"nodejs","cycle":"20","reason":"r","owner":"@o","expires":"2026-12-01"}`,
+			"kind must be osv, drift, or eol",
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			repo := initPolicyRepo(t)
+			writePolicy(t, repo, `{"schema_version":1,"advisories":{"minimum_severity":"any","only_fixed":false},"exceptions":[`+testCase.exception+`]}`)
+			_, err := Load(repo, "", policyNow)
+			if err == nil || !strings.Contains(err.Error(), testCase.want) {
+				t.Fatalf("expected %q rejection, got %v", testCase.want, err)
+			}
+		})
+	}
+
+	repo := initPolicyRepo(t)
+	writePolicy(t, repo, `{"schema_version":1,"advisories":{"minimum_severity":"any","only_fixed":false},"exceptions":[
+{"kind":"eol","package":"nodejs","cycle":"20","reason":"SDK keeps Node 20 users until 2026-12","owner":"@sdk","expires":"2026-12-01"}]}`)
+	loaded, err := Load(repo, "", policyNow)
+	if err != nil {
+		t.Fatal(err)
+	}
+	hits := []eol.Hit{
+		{Product: "nodejs", Cycle: "20", Version: "20", Path: "package.json", Line: 4, Reason: eol.ReasonEndOfLife},
+		{Product: "nodejs", Cycle: "18", Version: "18", Path: "Dockerfile", Line: 1, Reason: eol.ReasonEndOfLife},
+	}
+	kept, suppressed := loaded.ApplyEOL(hits)
+	if len(kept) != 1 || kept[0].Cycle != "18" {
+		t.Fatalf("kept %+v", kept)
+	}
+	if len(suppressed) != 1 || suppressed[0].Kind != "eol" || suppressed[0].Cycle != "20" ||
+		suppressed[0].SourcePath != "package.json:4" || suppressed[0].Owner != "@sdk" {
+		t.Fatalf("suppressed %+v", suppressed)
+	}
 }

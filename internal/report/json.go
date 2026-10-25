@@ -7,6 +7,7 @@ import (
 
 	"github.com/noeljackson/supplychain/internal/check"
 	"github.com/noeljackson/supplychain/internal/drift"
+	"github.com/noeljackson/supplychain/internal/eol"
 	"github.com/noeljackson/supplychain/internal/freshness"
 	"github.com/noeljackson/supplychain/internal/ioc"
 	"github.com/noeljackson/supplychain/internal/maintainer"
@@ -66,18 +67,20 @@ type Timings struct {
 }
 
 type FindingSet struct {
-	Manifest    []manifest.ManifestHit `json:"manifest_ioc"`
-	Lockfile    []manifest.LockHit     `json:"lockfile_ioc"`
-	OSV         []osv.PackageVuln      `json:"osv"`
-	Payloads    []ioc.PayloadHit       `json:"payload_ioc"`
-	Scripts     []scripts.Hit          `json:"install_scripts"`
-	Freshness   []freshness.Hit        `json:"freshness"`
-	Typosquat   []typosquat.Hit        `json:"typosquat"`
-	Signatures  []npmsig.Hit           `json:"npm_signatures"`
-	Vendored    []vendorartifact.Issue `json:"vendored_npm"`
-	Maintainers []maintainer.Hit       `json:"maintainers"`
-	Drift       []drift.Hit            `json:"lockfile_drift"`
-	Suppressed  []policy.Suppressed    `json:"suppressed"`
+	Manifest     []manifest.ManifestHit `json:"manifest_ioc"`
+	Lockfile     []manifest.LockHit     `json:"lockfile_ioc"`
+	OSV          []osv.PackageVuln      `json:"osv"`
+	Payloads     []ioc.PayloadHit       `json:"payload_ioc"`
+	Scripts      []scripts.Hit          `json:"install_scripts"`
+	Freshness    []freshness.Hit        `json:"freshness"`
+	Typosquat    []typosquat.Hit        `json:"typosquat"`
+	Signatures   []npmsig.Hit           `json:"npm_signatures"`
+	Vendored     []vendorartifact.Issue `json:"vendored_npm"`
+	Maintainers  []maintainer.Hit       `json:"maintainers"`
+	Drift        []drift.Hit            `json:"lockfile_drift"`
+	RuntimeEOL   []eol.Hit              `json:"runtime_eol"`
+	RuntimeStale []eol.Hit              `json:"runtime_stale"`
+	Suppressed   []policy.Suppressed    `json:"suppressed"`
 }
 
 // Envelope is the versioned machine-readable contract for a source scan.
@@ -106,7 +109,8 @@ func NewEnvelope(f scan.Findings, opts Options) Envelope {
 		status = "incomplete"
 	case code == ExitFindings:
 		status = "findings"
-	case f.HasAdvisoryHits() || f.HasCoverageGaps() || len(f.Suppressed) > 0:
+	case f.HasAdvisoryHits() || f.HasCoverageGaps() || len(f.Suppressed) > 0 ||
+		len(f.RuntimeStale) > 0:
 		status = "warning"
 	}
 	mode := "default"
@@ -143,18 +147,20 @@ func NewEnvelope(f scan.Findings, opts Options) Envelope {
 		Timings:     Timings{TotalMS: f.DurationMS},
 		Diagnostics: diagnostics(f.Coverage),
 		Findings: FindingSet{
-			Manifest:    nonNil(f.Manifest),
-			Lockfile:    nonNil(f.Lockfile),
-			OSV:         nonNil(f.OSV),
-			Payloads:    nonNil(f.Payloads),
-			Scripts:     nonNil(f.Scripts),
-			Freshness:   nonNil(f.Freshness),
-			Typosquat:   nonNil(f.Typosquat),
-			Signatures:  nonNil(f.Signatures),
-			Vendored:    nonNil(f.Vendored),
-			Maintainers: nonNil(f.Maintainers),
-			Drift:       nonNil(f.Drift),
-			Suppressed:  nonNil(f.Suppressed),
+			Manifest:     nonNil(f.Manifest),
+			Lockfile:     nonNil(f.Lockfile),
+			OSV:          nonNil(f.OSV),
+			Payloads:     nonNil(f.Payloads),
+			Scripts:      nonNil(f.Scripts),
+			Freshness:    nonNil(f.Freshness),
+			Typosquat:    nonNil(f.Typosquat),
+			Signatures:   nonNil(f.Signatures),
+			Vendored:     nonNil(f.Vendored),
+			Maintainers:  nonNil(f.Maintainers),
+			Drift:        nonNil(f.Drift),
+			RuntimeEOL:   nonNil(f.RuntimeEOL),
+			RuntimeStale: nonNil(f.RuntimeStale),
+			Suppressed:   nonNil(f.Suppressed),
 		},
 	}
 }

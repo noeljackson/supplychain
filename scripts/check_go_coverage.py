@@ -18,6 +18,7 @@ FLOORS = {
     "./internal/artifact": 65.0,
     "./internal/audit": 40.0,
     "./internal/bunverify": 35.0,
+    "./internal/eol": 80.0,
     "./internal/ioc": 45.0,
     "./internal/manifest": 75.0,
     "./internal/osv": 40.0,

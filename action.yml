@@ -35,6 +35,10 @@ inputs:
     description: Refresh OSM malware intelligence before scanning
     required: false
     default: "false"
+  refresh-eol:
+    description: Download end-of-life data for runtime, toolchain and base-image pins before scanning; set false when SUPPLYCHAIN_DATA_DIR already holds an offline bundle's eol data
+    required: false
+    default: "true"
   osm-token-file:
     description: Owner-only regular file containing the OSM bearer token
     required: false
@@ -118,6 +122,7 @@ runs:
         INPUT_MAINTAINER_BASELINE: ${{ inputs.maintainer-baseline }}
         INPUT_REFRESH_OSM: ${{ inputs.refresh-osm }}
         INPUT_OSM_TOKEN_FILE: ${{ inputs.osm-token-file }}
+        INPUT_REFRESH_EOL: ${{ inputs.refresh-eol }}
         SUPPLYCHAIN_BIN_DIR: ${{ runner.temp }}/supplychain-bin
       run: |
         set -euo pipefail
@@ -142,6 +147,11 @@ runs:
             ;;
           false) ;;
           *) echo "refresh-osm must be true or false" >&2; exit 2 ;;
+        esac
+        case "$INPUT_REFRESH_EOL" in
+          true) refresh_args+=(--refresh-eol) ;;
+          false) ;;
+          *) echo "refresh-eol must be true or false" >&2; exit 2 ;;
         esac
         "$RUNNER_TEMP/supplychain-action" ci \
           --policy="$INPUT_POLICY" \

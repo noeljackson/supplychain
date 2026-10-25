@@ -112,6 +112,7 @@ Use `strict` in CI. `auto` is useful only as a lower-friction exploratory scan.
 | --- | --- | --- |
 | Known malicious packages and repository indicators | enforced | enforced |
 | Dependency advisories and lockfile drift | reported | enforced |
+| [End-of-life runtimes, toolchains and base images](runtime-eol.md) | reported | enforced; missing data is a required gap |
 | OSV Scanner availability and successful execution | best effort | required; no package sources is `not_applicable` |
 | GitHub Actions audit with zizmor | skipped | enforced |
 | Redacted secret scan with Gitleaks | skipped | enforced |

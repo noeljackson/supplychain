@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/noeljackson/supplychain/internal/eol"
 	"github.com/noeljackson/supplychain/internal/registry"
 	"github.com/noeljackson/supplychain/internal/report"
 	"github.com/noeljackson/supplychain/internal/scan"
@@ -59,6 +60,7 @@ func cmdScan(g *Globals, args []string) int {
 		OSVOffline:         g.OSVOffline,
 		RequireComplete:    g.FailOnAdvisory,
 		SourcePolicy:       g.SourcePolicy,
+		EOLDataDir:         eol.Dir(g.DataDir),
 	})
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "scan error:", err)

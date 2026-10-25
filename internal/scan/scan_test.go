@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/noeljackson/supplychain/internal/check"
 	"github.com/noeljackson/supplychain/internal/drift"
@@ -241,4 +242,72 @@ func writeScanFixture(t *testing.T, path, body string) {
 	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
 		t.Fatal(err)
 	}
+}
+
+func TestRuntimeEndOfLifeCoverageAndClassification(t *testing.T) {
+	eolData, err := filepath.Abs(filepath.Join("..", "eol", "testdata", "data"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Date(2026, 10, 25, 0, 0, 0, 0, time.UTC)
+	run := func(t *testing.T, target, dataDir string, strict bool) Findings {
+		t.Helper()
+		binDir := fakeOSVScanner(t)
+		t.Setenv("TEST_SCAN_OSV_OUTPUT", `{"results":[]}`)
+		findings, err := Run(Options{
+			Target: target, BinDir: binDir, OpenIOC: strictFixtureIOCs(t),
+			RequireOSV: strict, RequireComplete: strict, EOLDataDir: dataDir, Now: now,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return findings
+	}
+
+	t.Run("strict scan without data fails closed", func(t *testing.T) {
+		target := t.TempDir()
+		writeScanFixture(t, filepath.Join(target, "go.mod"), "module x\n\ngo 1.27.3\n")
+		result := run(t, target, t.TempDir(), true).Coverage["runtime_eol"]
+		if result.Status != check.StatusIncomplete || !result.Required ||
+			!strings.Contains(result.Diagnostic, "end-of-life data for go is missing") {
+			t.Fatalf("runtime_eol = %+v", result)
+		}
+	})
+
+	t.Run("ordinary scan without data explains and passes", func(t *testing.T) {
+		target := t.TempDir()
+		writeScanFixture(t, filepath.Join(target, "go.mod"), "module x\n\ngo 1.24.0\n")
+		findings := run(t, target, t.TempDir(), false)
+		result := findings.Coverage["runtime_eol"]
+		if result.Status != check.StatusDisabled || result.Diagnostic == "" || findings.HasCoverageGaps() {
+			t.Fatalf("runtime_eol = %+v", result)
+		}
+	})
+
+	t.Run("no pins is not applicable", func(t *testing.T) {
+		if result := run(t, t.TempDir(), t.TempDir(), true).Coverage["runtime_eol"]; result.Status != check.StatusNotApplicable {
+			t.Fatalf("runtime_eol = %+v", result)
+		}
+	})
+
+	t.Run("end of life fails strict, stale only warns", func(t *testing.T) {
+		target := t.TempDir()
+		writeScanFixture(t, filepath.Join(target, "sdk", "go.mod"), "module x\n\ngo 1.24.0\n")
+		writeScanFixture(t, filepath.Join(target, "images", "app", "Dockerfile"), "FROM node:22.23.4-bookworm\n")
+		findings := run(t, target, eolData, true)
+		if findings.Coverage["runtime_eol"].Status != check.StatusCompleted {
+			t.Fatalf("runtime_eol = %+v", findings.Coverage["runtime_eol"])
+		}
+		if len(findings.RuntimeEOL) != 1 || findings.RuntimeEOL[0].Path != "sdk/go.mod" ||
+			!findings.HasAdvisoryHits() || findings.HasSupplyChainHits() {
+			t.Fatalf("eol findings %+v", findings.RuntimeEOL)
+		}
+		if len(findings.RuntimeStale) != 2 {
+			t.Fatalf("stale warnings %+v", findings.RuntimeStale)
+		}
+		staleOnly := Findings{RuntimeStale: findings.RuntimeStale}
+		if staleOnly.HasHits() || staleOnly.HasAdvisoryHits() {
+			t.Fatal("stale warnings must not fail a scan")
+		}
+	})
 }

@@ -42,6 +42,8 @@ func Human(w io.Writer, f scan.Findings, opts Options) int {
 				fmt.Fprintln(w, "    note: osv-scanner not installed — OSV advisory check skipped. Run 'supplychain update' to install.")
 			}
 			renderFreshness(w, f)
+			renderRuntimeStale(w, f)
+			renderEOLNote(w, f)
 			if len(f.Scripts) > 0 {
 				if opts.ShowScripts {
 					renderScripts(w, f, false)
@@ -157,6 +159,13 @@ func Human(w io.Writer, f scan.Findings, opts Options) int {
 			}
 		}
 	}
+	if len(f.RuntimeEOL) > 0 {
+		fmt.Fprintln(w)
+		fmt.Fprintln(w, "End-of-life runtimes, toolchains and base images (fails strict):")
+		for _, h := range f.RuntimeEOL {
+			fmt.Fprintf(w, "  %s:%d  %s — %s\n", h.Path, h.Line, h.Source, h.Detail)
+		}
+	}
 	if len(f.Suppressed) > 0 {
 		fmt.Fprintln(w)
 		fmt.Fprintln(w, "Suppressed advisory/audit findings (policy-visible):")
@@ -164,6 +173,9 @@ func Human(w io.Writer, f scan.Findings, opts Options) int {
 			selector := item.AdvisoryID
 			if selector == "" {
 				selector = item.DriftReason
+			}
+			if selector == "" {
+				selector = item.Cycle
 			}
 			fmt.Fprintf(w, "  %s %s %s — %s", item.Kind, item.Package, selector, item.Reason)
 			if item.Owner != "" {
@@ -173,6 +185,8 @@ func Human(w io.Writer, f scan.Findings, opts Options) int {
 		}
 	}
 	renderFreshness(w, f)
+	renderRuntimeStale(w, f)
+	renderEOLNote(w, f)
 	if opts.ShowScripts && len(f.Scripts) > 0 {
 		renderScripts(w, f, false)
 	} else if len(f.Scripts) > 0 {
@@ -225,6 +239,27 @@ func renderFreshness(w io.Writer, f scan.Findings) {
 		fmt.Fprintf(w, "  %s@%s  published %s ago (%s)\n",
 			h.Name, h.Version, h.AgeHuman, h.Published.Format("2006-01-02"))
 	}
+}
+
+func renderRuntimeStale(w io.Writer, f scan.Findings) {
+	if len(f.RuntimeStale) == 0 {
+		return
+	}
+	fmt.Fprintln(w)
+	fmt.Fprintf(w, "Stale runtimes, toolchains, base images and apt snapshots (warning, %d):\n", len(f.RuntimeStale))
+	for _, h := range f.RuntimeStale {
+		fmt.Fprintf(w, "  %s:%d  %s — %s\n", h.Path, h.Line, h.Source, h.Detail)
+	}
+}
+
+// renderEOLNote explains an ordinary scan that skipped the end-of-life check
+// for want of data; a strict scan reports the same as a coverage gap.
+func renderEOLNote(w io.Writer, f scan.Findings) {
+	result, ok := f.Coverage["runtime_eol"]
+	if !ok || result.Status != "disabled" || result.Diagnostic == "" {
+		return
+	}
+	fmt.Fprintf(w, "    note: end-of-life check skipped — %s\n", result.Diagnostic)
 }
 
 func renderScripts(w io.Writer, f scan.Findings, headerless bool) {

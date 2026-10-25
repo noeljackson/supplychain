@@ -2,8 +2,8 @@
 
 `supplychain` is a read-only repository, dependency, and opt-in host-forensics
 scanner. Repository scans detect known malicious packages, lockfile drift,
-install hooks, dropped payloads, maintainer changes, fresh npm releases, and
-strict Bun registry metadata without executing code from the repository being
+install hooks, dropped payloads, maintainer changes, fresh npm releases,
+end-of-life runtimes and base images, and strict Bun registry metadata without executing code from the repository being
 inspected. A tracked vendored-artifact manifest can additionally bind copied
 browser assets to exact members of signed npm registry tarballs; undeclared
 minified web assets and runtime package-CDN references fail closed. Host
@@ -21,6 +21,8 @@ persistence and shell-history checks are isolated under
   secret findings, image scans, and troubleshooting.
 - [Vendored npm artifacts](docs/vendored-artifacts.md) — verify copied browser
   assets against exact, signed npm tarball members.
+- [Runtime end of life](docs/runtime-eol.md) — Go, Node.js, Bun, Python and
+  Rust pins and container base images past end of life or falling behind.
 
 ## GitHub Action
 

@@ -7,10 +7,12 @@ import (
 	"fmt"
 	"io/fs"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/noeljackson/supplychain/internal/check"
 	"github.com/noeljackson/supplychain/internal/drift"
+	"github.com/noeljackson/supplychain/internal/eol"
 	"github.com/noeljackson/supplychain/internal/freshness"
 	"github.com/noeljackson/supplychain/internal/ioc"
 	"github.com/noeljackson/supplychain/internal/maintainer"
@@ -82,6 +84,13 @@ type Options struct {
 	// .supplychain/source-policy.json when present, otherwise the built-in
 	// all-advisories policy.
 	SourcePolicy string
+
+	// EOLDataDir holds the end-of-life product documents (DataDir/eol).
+	// Empty disables the runtime end-of-life check.
+	EOLDataDir string
+
+	// Now is the evaluation time for end-of-life dates; zero means time.Now.
+	Now time.Time
 }
 
 // Findings is the aggregated result of a scan.
@@ -99,6 +108,10 @@ type Findings struct {
 	Vendored    []vendorartifact.Issue `json:"vendored_npm_hits"`
 	Maintainers []maintainer.Hit       `json:"maintainer_changes"`
 	Drift       []drift.Hit            `json:"drift_hits"`
+	// RuntimeEOL are runtime, toolchain and base-image pins past end of life;
+	// RuntimeStale are the warnings (see package eol).
+	RuntimeEOL   []eol.Hit `json:"runtime_eol_hits"`
+	RuntimeStale []eol.Hit `json:"runtime_stale_hits"`
 	// PolicyLockfiles are the lockfiles the source policy named for the OSV
 	// advisory check beyond the standard names.
 	PolicyLockfiles []osv.Lockfile      `json:"policy_lockfiles"`
@@ -139,11 +152,12 @@ func (f Findings) HasSupplyChainHits() bool {
 // HasAdvisoryHits returns true for non-IOC dependency/audit findings.
 func (f Findings) HasAdvisoryHits() bool {
 	return len(f.OSV) > 0 ||
-		len(f.Drift) > 0
+		len(f.Drift) > 0 ||
+		len(f.RuntimeEOL) > 0
 }
 
-// HasHits returns true for anything non-informational. Scripts and freshness
-// remain informational only.
+// HasHits returns true for anything non-informational. Scripts, freshness
+// and stale-runtime warnings remain informational only.
 func (f Findings) HasHits() bool {
 	return f.HasSupplyChainHits() || f.HasAdvisoryHits()
 }
@@ -344,6 +358,8 @@ func Run(opts Options) (f Findings, err error) {
 		f.Coverage.Set("maintainers", check.StatusDisabled, false, "")
 	}
 
+	runEOL(&f, opts, sourcePolicy)
+
 	// Availability is independent of whether the scan returned findings —
 	// a clean OSV scan also returns no hits but is "available".
 	_, osvVersion, locateErr := osv.Locate(opts.BinDir)
@@ -355,7 +371,7 @@ func Run(opts Options) (f Findings, err error) {
 		} else {
 			f.Coverage.Set("osv", check.StatusIncomplete, false, "osv-scanner is unavailable")
 		}
-		f.OSV, f.Drift, f.Suppressed = sourcePolicy.Apply(f.OSV, f.Drift)
+		applySourcePolicy(&f, sourcePolicy)
 		return f, nil
 	}
 	f.Helpers["osv-scanner"] = osvVersion
@@ -364,7 +380,7 @@ func Run(opts Options) (f Findings, err error) {
 	if lockfileErr != nil {
 		f.Coverage.Set("osv", check.StatusFailed, opts.RequireOSV, lockfileErr.Error())
 		f.Coverage.SetDuration("osv", elapsedMS(checkStarted))
-		f.OSV, f.Drift, f.Suppressed = sourcePolicy.Apply(f.OSV, f.Drift)
+		applySourcePolicy(&f, sourcePolicy)
 		return f, nil
 	}
 	f.PolicyLockfiles = lockfiles
@@ -379,7 +395,7 @@ func Run(opts Options) (f Findings, err error) {
 			f.Coverage["osv"] = result
 		}
 		f.Coverage.SetDuration("osv", elapsedMS(checkStarted))
-		f.OSV, f.Drift, f.Suppressed = sourcePolicy.Apply(f.OSV, f.Drift)
+		applySourcePolicy(&f, sourcePolicy)
 		return f, nil
 	}
 	if f.OSVStatus == OSVNotApplicable {
@@ -388,8 +404,56 @@ func Run(opts Options) (f Findings, err error) {
 		f.Coverage.Set("osv", check.StatusCompleted, opts.RequireOSV, "")
 	}
 	f.Coverage.SetDuration("osv", elapsedMS(checkStarted))
-	f.OSV, f.Drift, f.Suppressed = sourcePolicy.Apply(f.OSV, f.Drift)
+	applySourcePolicy(&f, sourcePolicy)
 	return f, nil
+}
+
+// applySourcePolicy filters advisory and drift findings, keeping suppressions
+// recorded by earlier checks.
+func applySourcePolicy(f *Findings, sourcePolicy policy.Loaded) {
+	var suppressed []policy.Suppressed
+	f.OSV, f.Drift, suppressed = sourcePolicy.Apply(f.OSV, f.Drift)
+	f.Suppressed = append(f.Suppressed, suppressed...)
+}
+
+// runEOL judges runtime, toolchain and base-image pins. Missing data fails a
+// complete (strict) scan closed; an ordinary scan records why it was skipped.
+func runEOL(f *Findings, opts Options, sourcePolicy policy.Loaded) {
+	const name = "runtime_eol"
+	if opts.EOLDataDir == "" {
+		f.Coverage.Set(name, check.StatusDisabled, false, "")
+		return
+	}
+	started := time.Now()
+	defer func() { f.Coverage.SetDuration(name, elapsedMS(started)) }()
+	now := opts.Now
+	if now.IsZero() {
+		now = time.Now()
+	}
+	report, err := eol.Run(opts.Target, opts.EOLDataDir, now)
+	if err != nil {
+		f.Coverage.Set(name, check.StatusFailed, opts.RequireComplete, err.Error())
+		return
+	}
+	var suppressed []policy.Suppressed
+	f.RuntimeEOL, suppressed = sourcePolicy.ApplyEOL(report.Findings)
+	f.Suppressed = append(f.Suppressed, suppressed...)
+	f.RuntimeStale = report.Warnings
+	switch {
+	case report.Pins == 0:
+		f.Coverage.Set(name, check.StatusNotApplicable, opts.RequireComplete, "")
+	case len(report.Missing) > 0:
+		diagnostic := fmt.Sprintf(
+			"end-of-life data for %s is missing from %s; run 'supplychain update' or 'supplychain ci --refresh-eol', or supply data/eol in the advisory bundle",
+			strings.Join(report.Missing, ", "), opts.EOLDataDir)
+		if opts.RequireComplete {
+			f.Coverage.Set(name, check.StatusIncomplete, true, diagnostic)
+		} else {
+			f.Coverage.Set(name, check.StatusDisabled, false, diagnostic)
+		}
+	default:
+		f.Coverage.Set(name, check.StatusCompleted, opts.RequireComplete, "")
+	}
 }
 
 func applyOSVResult(f *Findings, hits []osv.PackageVuln, err error) error {
@@ -488,6 +552,11 @@ func SortFindings(f *Findings) {
 		if f.Suppressed[i].Package != f.Suppressed[j].Package {
 			return f.Suppressed[i].Package < f.Suppressed[j].Package
 		}
-		return f.Suppressed[i].AdvisoryID < f.Suppressed[j].AdvisoryID
+		if f.Suppressed[i].AdvisoryID != f.Suppressed[j].AdvisoryID {
+			return f.Suppressed[i].AdvisoryID < f.Suppressed[j].AdvisoryID
+		}
+		return f.Suppressed[i].SourcePath < f.Suppressed[j].SourcePath
 	})
+	eol.Sort(f.RuntimeEOL)
+	eol.Sort(f.RuntimeStale)
 }

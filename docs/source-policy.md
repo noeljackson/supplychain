@@ -2,8 +2,8 @@
 
 Malware IOCs, payload names, typosquats, signature failures, and maintainer
 changes are always enforced. A source policy can only tune OSV vulnerability
-advisories and manifest/lockfile drift, and name extra lockfiles for the OSV
-advisory check to read.
+advisories, manifest/lockfile drift and end-of-life runtime findings, and name
+extra lockfiles for the OSV advisory check to read.
 
 By default every OSV advisory and drift finding is reported. Strict mode fails
 on them. To set a threshold, commit `.supplychain/source-policy.json`:
@@ -31,10 +31,22 @@ on them. To set a threshold, commit `.supplychain/source-policy.json`:
       "reason": "fixture intentionally has no production lockfile",
       "owner": "@build",
       "expires": "2026-08-31"
+    },
+    {
+      "kind": "eol",
+      "package": "nodejs",
+      "cycle": "20",
+      "reason": "the SDK supports Node.js 20 users until its next major",
+      "owner": "@sdk",
+      "expires": "2026-12-01"
     }
   ]
 }
 ```
+
+An `eol` exception names an endoflife.date product and release cycle exactly as
+the finding reports them; see [runtime end of life](runtime-eol.md). Older
+scanners reject `cycle` and `kind: "eol"`, so move the scanner first.
 
 `minimum_severity` accepts `any`, `low`, `moderate`, `high`, or `critical`.
 Unknown severities remain reportable and fail conservatively. `only_fixed`
