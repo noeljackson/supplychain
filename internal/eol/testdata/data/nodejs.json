@@ -1,0 +1,155 @@
+{
+ "schema_version": "1.2.0",
+ "generated_at": "2026-10-25T00:00:00+00:00",
+ "last_modified": "2026-10-25T00:00:00+00:00",
+ "result": {
+  "name": "nodejs",
+  "label": "Node.js",
+  "releases": [
+   {
+    "name": "26",
+    "codename": null,
+    "label": "26",
+    "releaseDate": "2026-05-05",
+    "isLts": true,
+    "ltsFrom": null,
+    "isEol": false,
+    "eolFrom": "2029-04-30",
+    "isMaintained": true,
+    "latest": {
+     "name": "26.12.1",
+     "date": "2026-10-21",
+     "link": null
+    },
+    "isEoas": false,
+    "eoasFrom": "2027-10-27"
+   },
+   {
+    "name": "25",
+    "codename": null,
+    "label": "25",
+    "releaseDate": "2025-10-15",
+    "isLts": false,
+    "ltsFrom": null,
+    "isEol": true,
+    "eolFrom": "2026-06-01",
+    "isMaintained": false,
+    "latest": {
+     "name": "25.9.0",
+     "date": "2026-04-01",
+     "link": null
+    },
+    "isEoas": true,
+    "eoasFrom": "2026-04-01"
+   },
+   {
+    "name": "24",
+    "codename": null,
+    "label": "24",
+    "releaseDate": "2025-05-06",
+    "isLts": true,
+    "ltsFrom": null,
+    "isEol": false,
+    "eolFrom": "2028-04-30",
+    "isMaintained": true,
+    "latest": {
+     "name": "24.22.1",
+     "date": "2026-10-21",
+     "link": null
+    },
+    "isEoas": true,
+    "eoasFrom": "2026-10-20"
+   },
+   {
+    "name": "23",
+    "codename": null,
+    "label": "23",
+    "releaseDate": "2024-10-16",
+    "isLts": false,
+    "ltsFrom": null,
+    "isEol": true,
+    "eolFrom": "2025-06-01",
+    "isMaintained": false,
+    "latest": {
+     "name": "23.11.1",
+     "date": "2025-05-14",
+     "link": null
+    },
+    "isEoas": true,
+    "eoasFrom": "2025-04-01"
+   },
+   {
+    "name": "22",
+    "codename": null,
+    "label": "22",
+    "releaseDate": "2024-04-24",
+    "isLts": true,
+    "ltsFrom": null,
+    "isEol": false,
+    "eolFrom": "2027-04-30",
+    "isMaintained": true,
+    "latest": {
+     "name": "22.23.4",
+     "date": "2026-10-21",
+     "link": null
+    },
+    "isEoas": true,
+    "eoasFrom": "2025-10-21"
+   },
+   {
+    "name": "21",
+    "codename": null,
+    "label": "21",
+    "releaseDate": "2023-10-17",
+    "isLts": false,
+    "ltsFrom": null,
+    "isEol": true,
+    "eolFrom": "2024-06-01",
+    "isMaintained": false,
+    "latest": {
+     "name": "21.7.3",
+     "date": "2024-04-10",
+     "link": null
+    },
+    "isEoas": true,
+    "eoasFrom": "2024-04-01"
+   },
+   {
+    "name": "20",
+    "codename": null,
+    "label": "20",
+    "releaseDate": "2023-04-18",
+    "isLts": true,
+    "ltsFrom": null,
+    "isEol": true,
+    "eolFrom": "2026-04-30",
+    "isMaintained": false,
+    "latest": {
+     "name": "20.20.2",
+     "date": "2026-03-24",
+     "link": null
+    },
+    "isEoas": true,
+    "eoasFrom": "2024-10-22"
+   },
+   {
+    "name": "19",
+    "codename": null,
+    "label": "19",
+    "releaseDate": "2022-10-18",
+    "isLts": false,
+    "ltsFrom": null,
+    "isEol": true,
+    "eolFrom": "2023-06-01",
+    "isMaintained": false,
+    "latest": {
+     "name": "19.9.0",
+     "date": "2023-04-10",
+     "link": null
+    },
+    "isEoas": true,
+    "eoasFrom": "2023-04-01"
+   }
+  ]
+ }
+}

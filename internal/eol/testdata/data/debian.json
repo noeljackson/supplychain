@@ -1,0 +1,83 @@
+{
+ "schema_version": "1.2.0",
+ "generated_at": "2026-10-25T00:00:00+00:00",
+ "last_modified": "2026-10-25T00:00:00+00:00",
+ "result": {
+  "name": "debian",
+  "label": "Debian",
+  "releases": [
+   {
+    "name": "13",
+    "codename": "Trixie",
+    "label": "13",
+    "releaseDate": "2025-08-09",
+    "isLts": false,
+    "ltsFrom": null,
+    "isEol": false,
+    "eolFrom": "2030-06-30",
+    "isMaintained": true,
+    "latest": {
+     "name": "13.7",
+     "date": "2026-09-12",
+     "link": null
+    },
+    "isEoas": false,
+    "eoasFrom": "2028-08-09"
+   },
+   {
+    "name": "12",
+    "codename": "Bookworm",
+    "label": "12",
+    "releaseDate": "2023-06-10",
+    "isLts": false,
+    "ltsFrom": null,
+    "isEol": false,
+    "eolFrom": "2028-06-30",
+    "isMaintained": true,
+    "latest": {
+     "name": "12.15",
+     "date": "2026-07-11",
+     "link": null
+    },
+    "isEoas": true,
+    "eoasFrom": "2026-07-11"
+   },
+   {
+    "name": "11",
+    "codename": "Bullseye",
+    "label": "11",
+    "releaseDate": "2021-08-14",
+    "isLts": false,
+    "ltsFrom": null,
+    "isEol": true,
+    "eolFrom": "2026-08-31",
+    "isMaintained": false,
+    "latest": {
+     "name": "11.11",
+     "date": "2024-08-31",
+     "link": null
+    },
+    "isEoas": true,
+    "eoasFrom": "2024-08-14"
+   },
+   {
+    "name": "10",
+    "codename": "Buster",
+    "label": "10",
+    "releaseDate": "2019-07-06",
+    "isLts": false,
+    "ltsFrom": null,
+    "isEol": true,
+    "eolFrom": "2024-06-30",
+    "isMaintained": false,
+    "latest": {
+     "name": "10.13",
+     "date": "2022-09-10",
+     "link": null
+    },
+    "isEoas": true,
+    "eoasFrom": "2022-09-10"
+   }
+  ]
+ }
+}

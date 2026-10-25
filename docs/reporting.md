@@ -11,6 +11,14 @@ and `message` fields for configured npm artifacts that fail signature,
 integrity, archive-safety, or byte-identity verification. Operational registry
 failures appear under the required `vendored_npm` coverage check instead.
 
+`findings.runtime_eol` holds end-of-life runtime, toolchain and base-image
+pins that strict policy fails, and `findings.runtime_stale` the warnings. Each
+has `product`, `cycle`, `version`, `path`, `line`, `source`, `reason`
+(`end-of-life`, `end-of-life-grace`, `end-of-life-soon`,
+`active-support-ended`, `behind-latest` or `snapshot-old`), `eol`, `latest`
+and `detail`. A missing end-of-life document appears under the `runtime_eol`
+check; see [runtime end of life](runtime-eol.md).
+
 `scan-all --json` emits one aggregate JSON document with a `reports` array and
 an `errors` array. It never concatenates per-repository JSON objects.
 

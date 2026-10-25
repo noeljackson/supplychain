@@ -1,0 +1,59 @@
+{
+ "schema_version": "1.2.0",
+ "generated_at": "2026-10-25T00:00:00+00:00",
+ "last_modified": "2026-10-25T00:00:00+00:00",
+ "result": {
+  "name": "rust",
+  "label": "Rust",
+  "releases": [
+   {
+    "name": "1.99",
+    "codename": null,
+    "label": "1.99",
+    "releaseDate": "2026-10-01",
+    "isLts": false,
+    "ltsFrom": null,
+    "isEol": false,
+    "eolFrom": null,
+    "isMaintained": true,
+    "latest": {
+     "name": "1.99.1",
+     "date": "2026-10-15",
+     "link": null
+    }
+   },
+   {
+    "name": "1.98",
+    "codename": null,
+    "label": "1.98",
+    "releaseDate": "2026-08-20",
+    "isLts": false,
+    "ltsFrom": null,
+    "isEol": true,
+    "eolFrom": "2026-10-01",
+    "isMaintained": false,
+    "latest": {
+     "name": "1.98.1",
+     "date": "2026-09-03",
+     "link": null
+    }
+   },
+   {
+    "name": "1.97",
+    "codename": null,
+    "label": "1.97",
+    "releaseDate": "2026-07-09",
+    "isLts": false,
+    "ltsFrom": null,
+    "isEol": true,
+    "eolFrom": "2026-08-20",
+    "isMaintained": false,
+    "latest": {
+     "name": "1.97.1",
+     "date": "2026-07-16",
+     "link": null
+    }
+   }
+  ]
+ }
+}

@@ -251,7 +251,7 @@ commands:
                         dead-drop commit signatures across all git repos.
                         Flags: --git-root=PATH (default ~/src)
                         --unsafe-history-context (may print command secrets)
-  update                refresh IOC data and osv-scanner
+  update                refresh IOC data, end-of-life data and osv-scanner
   install-hook <kind>   install integration hook: claude-sessionstart | pre-commit
   doctor                check install health; optional --profile=source|strict|
                         image|workflows|secrets
@@ -294,6 +294,8 @@ environment:
   SUPPLYCHAIN_IOC_URL   base URL for IOC data updates
                         (default: https://raw.githubusercontent.com/noeljackson/supplychain/main/iocs)
   SUPPLYCHAIN_PIN       git ref / tag to pin IOC data to (default: main)
+  SUPPLYCHAIN_EOL_URL   origin of endoflife.date v1 product documents
+                        (default: https://endoflife.date/api/v1/products)
   SUPPLYCHAIN_OSM_TOKEN OpenSourceMalware.com bearer token (free tier ok).
                         Read once at start and removed from the environment,
                         so no tool supplychain runs inherits it.

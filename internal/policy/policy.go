@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/noeljackson/supplychain/internal/drift"
+	"github.com/noeljackson/supplychain/internal/eol"
 	"github.com/noeljackson/supplychain/internal/osv"
 )
 
@@ -42,9 +43,12 @@ type Exception struct {
 	AdvisoryID  string `json:"advisory_id,omitempty"`
 	Package     string `json:"package"`
 	DriftReason string `json:"drift_reason,omitempty"`
-	Reason      string `json:"reason"`
-	Owner       string `json:"owner"`
-	Expires     string `json:"expires"`
+	// Cycle is the end-of-life release cycle an eol exception accepts, e.g.
+	// "20" for nodejs or "1.24" for go.
+	Cycle   string `json:"cycle,omitempty"`
+	Reason  string `json:"reason"`
+	Owner   string `json:"owner"`
+	Expires string `json:"expires"`
 }
 
 type Document struct {
@@ -88,6 +92,7 @@ type Suppressed struct {
 	Version     string `json:"version,omitempty"`
 	AdvisoryID  string `json:"advisory_id,omitempty"`
 	DriftReason string `json:"drift_reason,omitempty"`
+	Cycle       string `json:"cycle,omitempty"`
 	SourcePath  string `json:"source_path,omitempty"`
 	Reason      string `json:"reason"`
 	Owner       string `json:"owner,omitempty"`
@@ -220,8 +225,8 @@ func validate(document Document, now time.Time) error {
 	today := dateOnly(now)
 	for i, exception := range document.Exceptions {
 		prefix := fmt.Sprintf("source policy exception %d", i)
-		if exception.Kind != "osv" && exception.Kind != "drift" {
-			return fmt.Errorf("%s: kind must be osv or drift", prefix)
+		if exception.Kind != "osv" && exception.Kind != "drift" && exception.Kind != "eol" {
+			return fmt.Errorf("%s: kind must be osv, drift, or eol", prefix)
 		}
 		if exception.Package == "" || exception.Reason == "" ||
 			exception.Owner == "" || exception.Expires == "" {
@@ -236,12 +241,16 @@ func validate(document Document, now time.Time) error {
 		}
 		switch exception.Kind {
 		case "osv":
-			if exception.AdvisoryID == "" || exception.DriftReason != "" {
+			if exception.AdvisoryID == "" || exception.DriftReason != "" || exception.Cycle != "" {
 				return fmt.Errorf("%s: advisory_id is required only for osv", prefix)
 			}
 		case "drift":
-			if exception.DriftReason == "" || exception.AdvisoryID != "" {
+			if exception.DriftReason == "" || exception.AdvisoryID != "" || exception.Cycle != "" {
 				return fmt.Errorf("%s: drift_reason is required only for drift", prefix)
+			}
+		case "eol":
+			if exception.Cycle == "" || exception.AdvisoryID != "" || exception.DriftReason != "" {
+				return fmt.Errorf("%s: cycle is required only for eol", prefix)
 			}
 		}
 		key := strings.Join([]string{
@@ -249,6 +258,7 @@ func validate(document Document, now time.Time) error {
 			strings.ToLower(exception.Package),
 			strings.ToUpper(exception.AdvisoryID),
 			exception.DriftReason,
+			exception.Cycle,
 		}, "\x00")
 		if _, ok := seen[key]; ok {
 			return fmt.Errorf("%s: duplicate selector", prefix)
@@ -445,6 +455,42 @@ func (loaded Loaded) applyDrift(hits []drift.Hit) ([]drift.Hit, []Suppressed) {
 		})
 	}
 	return filtered, suppressed
+}
+
+// ApplyEOL removes end-of-life findings that a dated, reviewed eol exception
+// accepts for their product and release cycle, and returns them as suppressed.
+func (loaded Loaded) ApplyEOL(hits []eol.Hit) ([]eol.Hit, []Suppressed) {
+	var filtered []eol.Hit
+	var suppressed []Suppressed
+	for _, hit := range hits {
+		exception, ok := loaded.eolException(hit.Product, hit.Cycle)
+		if !ok {
+			filtered = append(filtered, hit)
+			continue
+		}
+		suppressed = append(suppressed, Suppressed{
+			Kind:       "eol",
+			Package:    hit.Product,
+			Version:    hit.Version,
+			Cycle:      hit.Cycle,
+			SourcePath: fmt.Sprintf("%s:%d", hit.Path, hit.Line),
+			Reason:     exception.Reason,
+			Owner:      exception.Owner,
+			Expires:    exception.Expires,
+		})
+	}
+	return filtered, suppressed
+}
+
+func (loaded Loaded) eolException(product, cycle string) (Exception, bool) {
+	for _, exception := range loaded.Document.Exceptions {
+		if exception.Kind == "eol" &&
+			strings.EqualFold(exception.Package, product) &&
+			exception.Cycle == cycle {
+			return exception, true
+		}
+	}
+	return Exception{}, false
 }
 
 func (loaded Loaded) osvException(packageName, advisoryID string) (Exception, bool) {

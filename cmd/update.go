@@ -6,6 +6,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/noeljackson/supplychain/internal/eol"
 	"github.com/noeljackson/supplychain/internal/osm"
 	"github.com/noeljackson/supplychain/internal/osv"
 	"github.com/noeljackson/supplychain/internal/report"
@@ -28,6 +29,15 @@ func cmdUpdate(g *Globals, args []string) int {
 		fmt.Fprintln(os.Stderr, "osv-scanner install failed:", err)
 		healthy = false
 	}
+	fmt.Println("==> refreshing end-of-life data")
+	eolCtx, eolCancel := context.WithTimeout(context.Background(), 60*time.Second)
+	if err := eol.Refresh(eolCtx, nil, eol.BaseURL(), eol.Dir(g.DataDir)); err != nil {
+		fmt.Fprintln(os.Stderr, "    end-of-life refresh failed:", err)
+		healthy = false
+	} else {
+		fmt.Printf("    cached %d products\n", len(eol.Products))
+	}
+	eolCancel()
 	fmt.Println("==> refreshing OSM (OpenSourceMalware) cache")
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()

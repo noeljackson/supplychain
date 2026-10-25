@@ -1,0 +1,27 @@
+{
+ "schema_version": "1.2.0",
+ "generated_at": "2026-10-25T00:00:00+00:00",
+ "last_modified": "2026-10-25T00:00:00+00:00",
+ "result": {
+  "name": "bun",
+  "label": "Bun",
+  "releases": [
+   {
+    "name": "1",
+    "codename": null,
+    "label": "1",
+    "releaseDate": "2023-09-07",
+    "isLts": false,
+    "ltsFrom": null,
+    "isEol": false,
+    "eolFrom": null,
+    "isMaintained": true,
+    "latest": {
+     "name": "1.4.4",
+     "date": "2026-10-22",
+     "link": null
+    }
+   }
+  ]
+ }
+}

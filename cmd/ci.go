@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/noeljackson/supplychain/internal/bunverify"
+	"github.com/noeljackson/supplychain/internal/eol"
 	"github.com/noeljackson/supplychain/internal/osm"
 	"github.com/noeljackson/supplychain/internal/report"
 )
@@ -23,6 +24,10 @@ func cmdCI(g *Globals, args []string) int {
 	refreshOSM := fs.Bool(
 		"refresh-osm", false,
 		"refresh the OSM malware cache before scanning",
+	)
+	refreshEOL := fs.Bool(
+		"refresh-eol", false,
+		"download end-of-life data from "+eol.DefaultBaseURL+" before scanning",
 	)
 	osmTokenFile := fs.String(
 		"osm-token-file", "",
@@ -75,6 +80,16 @@ func cmdCI(g *Globals, args []string) int {
 		}
 		if skipped {
 			fmt.Fprintln(os.Stderr, "ci: OSM refresh unexpectedly skipped")
+			return report.ExitOperational
+		}
+	}
+
+	if *refreshEOL {
+		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+		refreshErr := eol.Refresh(ctx, nil, eol.BaseURL(), eol.Dir(g.DataDir))
+		cancel()
+		if refreshErr != nil {
+			fmt.Fprintln(os.Stderr, "ci: refresh end-of-life data:", refreshErr)
 			return report.ExitOperational
 		}
 	}
