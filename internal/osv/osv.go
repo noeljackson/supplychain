@@ -153,7 +153,11 @@ func Scan(binDir, target string, offline bool, lockfiles []Lockfile) ([]PackageV
 			}
 		}
 	}
-	return parse(out)
+	vulns, err := parse(out)
+	if err != nil {
+		return nil, err
+	}
+	return dropLocalCargoPackages(target, vulns), nil
 }
 
 // ErrOfflineDatabaseMissing reports an ecosystem present in the target whose
