@@ -67,7 +67,7 @@ func cmdCI(g *Globals, args []string) int {
 		if token == "" {
 			fmt.Fprintln(
 				os.Stderr,
-				"ci: --refresh-osm requires --osm-token-file or SUPPLYCHAIN_OSM_TOKEN",
+				"ci: --refresh-osm requires --osm-token-file, SUPPLYCHAIN_OSM_TOKEN, or OSM_API_KEY",
 			)
 			return report.ExitOperational
 		}

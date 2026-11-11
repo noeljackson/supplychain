@@ -44,7 +44,7 @@ func cmdUpdate(g *Globals, args []string) int {
 	skipped, added, ignored, err := osm.RefreshWithToken(ctx, g.DataDir, []string{"npm"}, g.OSMToken)
 	switch {
 	case skipped:
-		fmt.Println("    skipped — SUPPLYCHAIN_OSM_TOKEN not set")
+		fmt.Println("    skipped — SUPPLYCHAIN_OSM_TOKEN and OSM_API_KEY not set")
 	case err != nil:
 		fmt.Fprintln(os.Stderr, "    OSM refresh failed:", err)
 		healthy = false

@@ -9,14 +9,16 @@ import (
 	"testing"
 )
 
-// The test binary doubles as a child tool: it records whether it inherited the
-// OSM token and exits.
+// The test binary doubles as a child tool: it records whether it inherited an
+// OSM token under either supported name and exits.
 func init() {
 	report := os.Getenv("TEST_OSM_CHILD_ENV_REPORT")
 	if os.Getenv("GO_WANT_OSM_CHILD_ENV_HELPER") != "1" || report == "" {
 		return
 	}
-	_, present := os.LookupEnv(envToken)
+	_, dedicatedPresent := os.LookupEnv(envToken)
+	_, fallbackPresent := os.LookupEnv(fallbackEnvToken)
+	present := dedicatedPresent || fallbackPresent
 	if err := os.WriteFile(report, []byte(strconv.FormatBool(present)), 0o600); err != nil {
 		os.Exit(2)
 	}
@@ -54,19 +56,55 @@ func childSeesToken(t *testing.T) (inherited, explicit bool) {
 }
 
 func TestTakeEnvironmentTokenHidesTheTokenFromChildTools(t *testing.T) {
-	t.Setenv(envToken, "synthetic-osm-token")
+	for _, name := range []string{envToken, fallbackEnvToken} {
+		t.Run(name, func(t *testing.T) {
+			t.Setenv(name, "synthetic-osm-token")
+			token, err := TakeEnvironmentToken()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if token != "synthetic-osm-token" {
+				t.Fatalf("token = %q, want the environment value", token)
+			}
+			for _, scrubbed := range []string{envToken, fallbackEnvToken} {
+				if _, present := os.LookupEnv(scrubbed); present {
+					t.Fatalf("%s is still in the process environment", scrubbed)
+				}
+			}
+			if inherited, explicit := childSeesToken(t); inherited || explicit {
+				t.Fatalf("child tool saw the token: inherited=%v explicit=%v", inherited, explicit)
+			}
+		})
+	}
+}
+
+func TestTakeEnvironmentTokenPrefersDedicatedNameAndScrubsBoth(t *testing.T) {
+	t.Setenv(envToken, "dedicated-token")
+	t.Setenv(fallbackEnvToken, "fallback-token")
 	token, err := TakeEnvironmentToken()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if token != "synthetic-osm-token" {
-		t.Fatalf("token = %q, want the environment value", token)
+	if token != "dedicated-token" {
+		t.Fatalf("token = %q, want dedicated-token", token)
 	}
-	if _, present := os.LookupEnv(envToken); present {
-		t.Fatal("token is still in the process environment")
+	for _, name := range []string{envToken, fallbackEnvToken} {
+		if _, present := os.LookupEnv(name); present {
+			t.Fatalf("%s is still in the process environment", name)
+		}
 	}
-	if inherited, explicit := childSeesToken(t); inherited || explicit {
-		t.Fatalf("child tool saw the token: inherited=%v explicit=%v", inherited, explicit)
+}
+
+func TestTokenFallsBackToSharedWorkstationName(t *testing.T) {
+	t.Setenv(fallbackEnvToken, "fallback-token")
+	os.Unsetenv(envToken)
+	if token := Token(); token != "fallback-token" {
+		t.Fatalf("Token() = %q, want fallback-token", token)
+	}
+
+	t.Setenv(envToken, "dedicated-token")
+	if token := Token(); token != "dedicated-token" {
+		t.Fatalf("Token() = %q, want dedicated-token", token)
 	}
 }
 
@@ -87,8 +125,10 @@ func TestChildToolTestDetectsAnUnremovedToken(t *testing.T) {
 }
 
 func TestTakeEnvironmentTokenWithoutToken(t *testing.T) {
-	t.Setenv(envToken, "")
-	os.Unsetenv(envToken)
+	for _, name := range []string{envToken, fallbackEnvToken} {
+		t.Setenv(name, "")
+		os.Unsetenv(name)
+	}
 	token, err := TakeEnvironmentToken()
 	if err != nil || token != "" {
 		t.Fatalf("TakeEnvironmentToken() = %q, %v; want empty, nil", token, err)
