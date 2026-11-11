@@ -36,16 +36,7 @@ func Run(target, binDir string) error {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
-	args := []string{
-		"--offline",
-		"--strict-collection",
-		"--persona=regular",
-		"--min-severity=medium",
-		"--min-confidence=medium",
-		"--format=github",
-	}
-	args = append(args, definitions...)
-	cmd := exec.CommandContext(ctx, zizmor, args...)
+	cmd := exec.CommandContext(ctx, zizmor, zizmorArgs(definitions)...)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
@@ -59,6 +50,23 @@ func Run(target, binDir string) error {
 		return fmt.Errorf("workflow: zizmor policy failed: %w", err)
 	}
 	return nil
+}
+
+// zizmorArgs audits definitions without loading any zizmor configuration:
+// zizmor otherwise reads a zizmor.yml from the audited tree, which could
+// disable its own findings. Reviewed exceptions stay inline in the
+// definitions themselves.
+func zizmorArgs(definitions []string) []string {
+	args := []string{
+		"--no-config",
+		"--offline",
+		"--strict-collection",
+		"--persona=regular",
+		"--min-severity=medium",
+		"--min-confidence=medium",
+		"--format=github",
+	}
+	return append(args, definitions...)
 }
 
 func definitionPaths(root string) ([]string, error) {

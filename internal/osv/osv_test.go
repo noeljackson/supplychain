@@ -16,6 +16,9 @@ import (
 )
 
 func init() {
+	if os.Getenv("GO_WANT_OSV_ARGS_HELPER") == "1" && filepath.Base(os.Args[0]) == "osv-scanner" {
+		recordArgs()
+	}
 	if os.Getenv("GO_WANT_OSV_TIMEOUT_HELPER") != "1" ||
 		filepath.Base(os.Args[0]) != "osv-scanner" {
 		return
@@ -117,7 +120,7 @@ func TestScanReportsTimeoutAsOperationalFailure(t *testing.T) {
 }
 
 func TestScanArgsEnableAllOfflineGuards(t *testing.T) {
-	args := strings.Join(scanArgs("/workspace", true, nil), " ")
+	args := strings.Join(scanArgs("/workspace", true, nil, "/cfg/osv-scanner.toml"), " ")
 	for _, required := range []string{"--offline", "--offline-vulnerabilities", "--no-resolve"} {
 		if !strings.Contains(args, required) {
 			t.Fatalf("offline arguments missing %s: %s", required, args)
@@ -129,7 +132,7 @@ func TestScanArgsEnableAllOfflineGuards(t *testing.T) {
 }
 
 func TestScanArgsRemainOnlineByDefault(t *testing.T) {
-	args := strings.Join(scanArgs("/workspace", false, nil), " ")
+	args := strings.Join(scanArgs("/workspace", false, nil, "/cfg/osv-scanner.toml"), " ")
 	for _, offlineOnly := range []string{"--offline", "--offline-vulnerabilities", "--no-resolve"} {
 		if strings.Contains(args, offlineOnly) {
 			t.Fatalf("default arguments unexpectedly contain %s: %s", offlineOnly, args)
@@ -179,4 +182,84 @@ func FuzzParseOSVOutput(f *testing.F) {
 		}
 		_, _ = parse(body)
 	})
+}
+
+// recordArgs is a fake osv-scanner: it records its arguments and the size of
+// the configuration file it was given, then reports no findings.
+func recordArgs() {
+	record := os.Getenv("GO_WANT_OSV_ARGS_RECORD")
+	lines := strings.Join(os.Args[1:], "\n") + "\n"
+	for i, arg := range os.Args {
+		if arg == "--config" && i+1 < len(os.Args) {
+			info, err := os.Stat(os.Args[i+1])
+			if err != nil {
+				lines += "config-missing\n"
+			} else {
+				lines += fmt.Sprintf("config-size=%d\n", info.Size())
+			}
+		}
+	}
+	if err := os.WriteFile(record, []byte(lines), 0o600); err != nil {
+		os.Exit(3)
+	}
+	fmt.Println(`{"results":[]}`)
+	os.Exit(0)
+}
+
+func TestScanArgsAlwaysNameTheTrustedConfig(t *testing.T) {
+	for _, offline := range []bool{false, true} {
+		args := scanArgs("/workspace", offline, derpLock, "/cfg/osv-scanner.toml")
+		joined := strings.Join(args, " ")
+		if !strings.Contains(joined, " --config /cfg/osv-scanner.toml ") {
+			t.Fatalf("scan does not name the trusted configuration: %s", joined)
+		}
+	}
+}
+
+// A scanned tree's own osv-scanner.toml could ignore its advisories, so Scan
+// always gives osv-scanner an empty configuration from outside the tree.
+func TestScanOverridesTheTreeConfigurationWithAnEmptyOne(t *testing.T) {
+	binDir := t.TempDir()
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(executable, filepath.Join(binDir, "osv-scanner")); err != nil {
+		t.Fatal(err)
+	}
+	target := t.TempDir()
+	ignore := "[[IgnoredVulns]]\nid = \"RUSTSEC-2021-0003\"\n"
+	if err := os.WriteFile(filepath.Join(target, "osv-scanner.toml"), []byte(ignore), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	record := filepath.Join(t.TempDir(), "args")
+	t.Setenv("GO_WANT_OSV_ARGS_HELPER", "1")
+	t.Setenv("GO_WANT_OSV_ARGS_RECORD", record)
+
+	if _, err := Scan(binDir, target, false, nil); err != nil {
+		t.Fatal(err)
+	}
+	body, err := os.ReadFile(record)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines := strings.Split(strings.TrimSpace(string(body)), "\n")
+	config := ""
+	for i, arg := range lines {
+		if arg == "--config" && i+1 < len(lines) {
+			config = lines[i+1]
+		}
+	}
+	if config == "" {
+		t.Fatalf("osv-scanner was not given a configuration: %q", lines)
+	}
+	if strings.HasPrefix(config, target) {
+		t.Fatalf("the configuration %s is inside the scanned tree %s", config, target)
+	}
+	if !strings.Contains(string(body), "config-size=0\n") {
+		t.Fatalf("the configuration was not an existing empty file: %q", lines)
+	}
+	if _, err := os.Stat(config); !os.IsNotExist(err) {
+		t.Fatalf("the private configuration %s outlived the scan", config)
+	}
 }

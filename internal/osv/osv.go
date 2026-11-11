@@ -100,9 +100,15 @@ func Scan(binDir, target string, offline bool, lockfiles []Lockfile) ([]PackageV
 	ctx, cancel := context.WithTimeout(context.Background(), scanTimeout)
 	defer cancel()
 
+	config, cleanup, err := emptyConfig()
+	if err != nil {
+		return nil, err
+	}
+	defer cleanup()
+
 	// osv-scanner v2 changed the CLI to `osv-scanner scan source`; older
 	// versions accepted a bare path. Try the new form first, fall back.
-	args := scanArgs(target, offline, lockfiles)
+	args := scanArgs(target, offline, lockfiles, config)
 	cmd := exec.CommandContext(ctx, path, args...)
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
@@ -138,7 +144,7 @@ func Scan(binDir, target string, offline bool, lockfiles []Lockfile) ([]PackageV
 			if len(lockfiles) > 0 {
 				return nil, fmt.Errorf("osv-scanner scan of the named lockfiles failed: %w", err)
 			}
-			cmd = exec.CommandContext(ctx, path, "--recursive", "--format", "json", target)
+			cmd = exec.CommandContext(ctx, path, "--config", config, "--recursive", "--format", "json", target)
 			out, err = cmd.Output()
 			if err != nil {
 				if errors.Is(ctx.Err(), context.DeadlineExceeded) {
@@ -192,8 +198,26 @@ func missingOfflineDatabases(stderr []byte) []string {
 	return missing
 }
 
-func scanArgs(target string, offline bool, lockfiles []Lockfile) []string {
-	args := []string{"scan", "source", "--recursive", "--format", "json"}
+// emptyConfig writes an empty osv-scanner configuration in a private
+// directory. osv-scanner otherwise reads an osv-scanner.toml from the scanned
+// tree, so the tree could ignore its own advisories; exceptions belong in the
+// source policy, which is not part of the scanned tree.
+func emptyConfig() (string, func(), error) {
+	dir, err := os.MkdirTemp("", "supplychain-osv-config-")
+	if err != nil {
+		return "", nil, fmt.Errorf("osv-scanner configuration: %w", err)
+	}
+	cleanup := func() { _ = os.RemoveAll(dir) }
+	path := filepath.Join(dir, "osv-scanner.toml")
+	if err := os.WriteFile(path, nil, 0o600); err != nil {
+		cleanup()
+		return "", nil, fmt.Errorf("osv-scanner configuration: %w", err)
+	}
+	return path, cleanup, nil
+}
+
+func scanArgs(target string, offline bool, lockfiles []Lockfile, config string) []string {
+	args := []string{"scan", "source", "--config", config, "--recursive", "--format", "json"}
 	for _, lockfile := range lockfiles {
 		args = append(args, "--lockfile", lockfile.Format+":"+lockfile.Path)
 	}

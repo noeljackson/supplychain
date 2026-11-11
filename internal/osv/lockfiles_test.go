@@ -65,8 +65,8 @@ func invocations(t *testing.T, record string) []string {
 var derpLock = []Lockfile{{Format: "Cargo.lock", Path: "/repo/deployments/docker/derp.Cargo.lock"}}
 
 func TestScanArgsNameEachLockfileBeforeTheTarget(t *testing.T) {
-	args := strings.Join(scanArgs("/repo", true, derpLock), " ")
-	want := "scan source --recursive --format json --lockfile Cargo.lock:/repo/deployments/docker/derp.Cargo.lock --offline --offline-vulnerabilities --no-resolve /repo"
+	args := strings.Join(scanArgs("/repo", true, derpLock, "/cfg/osv-scanner.toml"), " ")
+	want := "scan source --config /cfg/osv-scanner.toml --recursive --format json --lockfile Cargo.lock:/repo/deployments/docker/derp.Cargo.lock --offline --offline-vulnerabilities --no-resolve /repo"
 	if args != want {
 		t.Fatalf("scanArgs() = %q, want %q", args, want)
 	}
