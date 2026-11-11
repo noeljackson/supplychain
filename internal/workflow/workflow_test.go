@@ -65,3 +65,13 @@ func TestContainsGiteaAndForgejoWorkflowDefinitions(t *testing.T) {
 		t.Fatalf("expected Gitea and Forgejo workflow definitions, got %v", definitions)
 	}
 }
+
+func TestZizmorLoadsNoConfigurationFromTheAuditedTree(t *testing.T) {
+	args := zizmorArgs([]string{"/repo/.gitea/workflows/ci.yaml"})
+	if len(args) == 0 || args[0] != "--no-config" {
+		t.Fatalf("zizmor may load a configuration from the audited tree: %q", args)
+	}
+	if args[len(args)-1] != "/repo/.gitea/workflows/ci.yaml" {
+		t.Fatalf("definitions must remain the final arguments: %q", args)
+	}
+}
