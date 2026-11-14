@@ -2,7 +2,9 @@ package secrets
 
 import (
 	"context"
+	"crypto/sha256"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -23,6 +25,12 @@ func init() {
 		contents += " <" + arg + ">"
 	}
 	contents += "\n"
+	// Every scan must tell Gitleaks to ignore inline allow comments. The
+	// fake refuses to run without the flag, so each test that reaches
+	// Gitleaks proves it for its own path.
+	if !strings.Contains(contents, "<--ignore-gitleaks-allow>") {
+		os.Exit(16)
+	}
 	if cwd, err := os.Getwd(); err == nil {
 		contents += "cwd:" + cwd + "\n"
 	}
@@ -75,6 +83,7 @@ func TestRunUsesPinnedFlags(t *testing.T) {
 		"--no-banner",
 		"--no-color",
 		"--redact",
+		"--ignore-gitleaks-allow",
 		"--log-level",
 		"warn",
 		"--exit-code",
@@ -238,7 +247,7 @@ func TestRunUsesExplicitTrackedConfig(t *testing.T) {
 		t.Fatal(err)
 	}
 	text := string(got)
-	for _, want := range []string{"<--config>", "<" + configPath + ">"} {
+	for _, want := range []string{"<--config>", "<" + configPath + ">", "<--ignore-gitleaks-allow>"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("fake gitleaks log missing %q:\n%s", want, text)
 		}
@@ -284,6 +293,44 @@ func TestRunRejectsConfigSymlink(t *testing.T) {
 	err := Run(target, binDir, ".gitleaks.toml")
 	if err == nil || !strings.Contains(err.Error(), "regular file") {
 		t.Fatalf("expected symlink config error, got %v", err)
+	}
+}
+
+// With the real Gitleaks, a token is reported whether or not its line carries
+// the inline allow comment. The token and the comment are put together here,
+// so that this file holds neither.
+func TestRunReportsATokenBesideAnInlineAllowComment(t *testing.T) {
+	gitleaks, err := exec.LookPath("gitleaks")
+	if err != nil {
+		t.Skip("gitleaks is not installed")
+	}
+	binDir := t.TempDir()
+	if err := os.Symlink(gitleaks, filepath.Join(binDir, "gitleaks")); err != nil {
+		t.Fatal(err)
+	}
+	token := "ghp_" + fmt.Sprintf("%x", sha256.Sum256([]byte("supplychain secrets fixture")))[:36]
+	comment := "gitleaks" + ":allow"
+	for name, line := range map[string]string{
+		"plain":                   "token = \"" + token + "\"\n",
+		"beside an allow comment": "token = \"" + token + "\"  # " + comment + "\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			target := initGitTarget(t)
+			writeTestFile(t, filepath.Join(target, "config.py"), line)
+			gitAdd(t, target, "config.py")
+			previousStdout, previousStderr := os.Stdout, os.Stderr
+			sink, err := os.Create(filepath.Join(t.TempDir(), "gitleaks-output"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			os.Stdout, os.Stderr = sink, sink
+			err = Run(target, binDir, "")
+			os.Stdout, os.Stderr = previousStdout, previousStderr
+			sink.Close()
+			if !errors.Is(err, ErrFindings) {
+				t.Fatalf("Run returned %v, want the token reported as a finding", err)
+			}
+		})
 	}
 }
 

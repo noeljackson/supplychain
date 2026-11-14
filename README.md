@@ -92,9 +92,10 @@ closed without printing secret values. The scanner stages a temporary hard-link
 view of tracked and non-ignored untracked files, so generated dependencies and
 build artifacts are excluded without copying secret-bearing source files or
 following repository symlinks. Repository-controlled Gitleaks config and ignore
-files are ignored by default. Reviewed inline `gitleaks:allow` comments are the
-simplest explicit exception mechanism. Repositories with several narrowly
-documented public-value exceptions may opt in to a tracked config with
+files are ignored by default, and so are inline Gitleaks allow comments: the
+scanned repository writes them, so a change under review could hide a secret
+beside one. Repositories with narrowly documented public-value exceptions opt
+in to a tracked config with
 `gitleaks-config`; the scanner rejects untracked, external, and symlinked policy
 files, and never honors `.gitleaksignore`.
 
