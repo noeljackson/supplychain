@@ -20,7 +20,8 @@ var ErrFindings = errors.New("secret findings")
 
 // Run scans target with Gitleaks. Findings are reported by Gitleaks and cause
 // a non-zero exit. Repository configuration is ignored unless config is an
-// explicit, tracked path inside target.
+// explicit, tracked path inside target, and no comment in a scanned file can
+// exempt its own line.
 func Run(target, binDir, config string) error {
 	if target == "" {
 		return errors.New("secrets: target is required")
@@ -40,19 +41,7 @@ func Run(target, binDir, config string) error {
 		return err
 	}
 	defer cleanup()
-	args := []string{
-		"dir",
-		".",
-		"--no-banner",
-		"--no-color",
-		"--redact",
-		"--log-level", "warn",
-		"--exit-code", "1",
-	}
-	if configPath != "" {
-		args = append(args, "--config", configPath)
-	}
-	cmd := exec.CommandContext(ctx, gitleaks, args...)
+	cmd := exec.CommandContext(ctx, gitleaks, gitleaksArgs(configPath)...)
 	cmd.Dir = scanRoot
 	cmd.Env = append(withoutGitleaksConfig(os.Environ()), "GITLEAKS_ENABLE_ANALYTICS=false")
 	cmd.Stdout = os.Stdout
@@ -68,6 +57,27 @@ func Run(target, binDir, config string) error {
 		return fmt.Errorf("secrets: gitleaks policy failed: %w", err)
 	}
 	return nil
+}
+
+// gitleaksArgs scans the staged directory. Gitleaks otherwise skips any line
+// that carries its inline allow comment, which the scanned repository itself
+// writes: a change under review could hide a secret beside one. Exceptions
+// live only in an explicit reviewed config.
+func gitleaksArgs(configPath string) []string {
+	args := []string{
+		"dir",
+		".",
+		"--no-banner",
+		"--no-color",
+		"--redact",
+		"--ignore-gitleaks-allow",
+		"--log-level", "warn",
+		"--exit-code", "1",
+	}
+	if configPath != "" {
+		args = append(args, "--config", configPath)
+	}
+	return args
 }
 
 // stageGitVisible builds a hard-linked view containing tracked files and

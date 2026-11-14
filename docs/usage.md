@@ -181,9 +181,11 @@ timeout and the workflow's outer job timeout; a timeout is an operational
 failure, never a clean result. Hard links avoid duplicating large file content.
 
 If a finding is a real credential, rotate or revoke it before doing anything
-else, then remove it from the current tree and relevant history. For a reviewed
-synthetic test value, an inline `gitleaks:allow` comment is the smallest
-exception mechanism.
+else, then remove it from the current tree and relevant history. An inline
+Gitleaks allow comment exempts nothing: the scan ignores such comments, because
+the scanned repository writes them. Keep a synthetic test value out of the
+source as a literal, for example by joining it from parts, or allow it in a
+reviewed config as below.
 
 Repository-owned Gitleaks configuration and ignore files are ignored by
 default. If several public values need narrow rule/path/value-shape exceptions,
